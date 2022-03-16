@@ -78,7 +78,7 @@ def game_events_occurred(
     just using game state in general. Leveraging of features more just to avoid code duplication.
     """
 
-    self.history[1].append(new_game_state["self"][-1])
+    self.history.append(new_game_state["self"][-1])
 
     # skip first timestep (STEP 1)
     if old_game_state is None:
@@ -87,7 +87,7 @@ def game_events_occurred(
         return
 
     old_state = self.old_state
-    new_state = state_to_features(self, new_game_state, self.history)
+    new_state = state_to_features(self, new_game_state)
 
     with open("indexed_state_list.txt", encoding="utf-8", mode="r") as f:
         state_list = f.readlines()
@@ -220,7 +220,7 @@ def end_of_round(self, last_game_state, last_action, events):
     """Called once per agent after the last step of a round."""
     self.transitions.append(
         Transition(
-            state_to_features(self, last_game_state, self.history),
+            state_to_features(self, last_game_state),
             last_action,
             None,
             reward_from_events(self, events),

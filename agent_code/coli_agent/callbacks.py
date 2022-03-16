@@ -22,7 +22,7 @@ def setup(self):
     """Sets up everything. (First call)"""
 
     # Where to put?
-    self.history = [0, deque(maxlen=5)]  # [num_of_coins_collected, tiles_visited]
+    self.history = deque(maxlen=5)  # tiles visited
 
     # find latest q_table
     list_of_q_tables = glob.glob(
@@ -65,7 +65,7 @@ def setup(self):
 
 def act(self, game_state: dict) -> str:
     """Takes in the current game state and returns the chosen action in form of a string."""
-    state = state_to_features(self, game_state, self.history)
+    state = state_to_features(self, game_state)
     self.old_state = state
 
     if self.train and np.random.random() < self.exploration_rate:
@@ -460,21 +460,10 @@ def _shortest_path_feature(self, game_state) -> action:
             return np.random.choice(ACTIONS)
 
 
-def state_to_features(self, game_state, history) -> np.array:
-    # TODO: vectorize?
-    # TODO: combine different for loops (!)
-    """Parses game state to features"""
-    features = np.zeros(9, dtype=np.int8)
-
-    try:
-        own_position = game_state["self"][-1]
-        enemy_positions = [enemy[-1] for enemy in game_state["others"]]
-    except TypeError:
-        print("First game state is none")
-        return
-
-    # Feature 1: if on hot field or not
+def hot_field_feature(game_state: dict) -> int:
+    own_position = game_state["self"][-1]
     all_hot_fields, if_dangerous = [], []
+
     if len(game_state["bombs"]) > 0:
         for bomb in game_state["bombs"]:
             bomb_pos = bomb[0]  # coordinates of bomb as type tuple
@@ -489,11 +478,16 @@ def state_to_features(self, game_state, history) -> np.array:
                 in_danger = own_position == lava
                 if_dangerous.append(in_danger)
 
-            features[0] = int(any(if_dangerous))
+            return int(any(if_dangerous))
     else:
-        features[0] = 0
+        return 0
 
-    # Feature 2-5 ("Blockages")
+
+def blockage_feature(game_state: dict) -> List[int]:
+    own_position = game_state["self"][-1]
+    enemy_positions = [enemy[-1] for enemy in game_state["others"]]
+    results = [0, 0, 0, 0]
+
     for i, neighboring_coord in enumerate(_get_neighboring_tiles(own_position, 1)):
         neighboring_x, neighboring_y = neighboring_coord
         neighboring_content = game_state["field"][neighboring_x][
@@ -516,18 +510,79 @@ def state_to_features(self, game_state, history) -> np.array:
             or explosion
             or ripe_bomb
         ):
-            features[1 + i] = 1
-        else:
-            features[1 + i] = 0
+            results[i] = 1
+
+    return results
+
+
+def progression_feature(self) -> int:
+    num_visited_tiles = len(
+        self.history
+    )  # history contains agent coords of last 5 turns
+    if num_visited_tiles > 1:  # otherwise the feature is and is supposed to be 0 anyway
+        num_unique_visited_tiles = len(set(self.history))
+        # of 5 tiles, 3 should be new -> 60%. for start of the episode: 2 out of 2, 2 out of 3, 3 out of 4
+        return 1 if (num_unique_visited_tiles / num_visited_tiles) >= 0.6 else 0
+    return 0
+
+
+def surrounding_crates_feature(game_state: dict) -> int:
+    own_position = game_state["self"][-1]
+    neighbours = get_neighboring_tiles_until_wall(
+        own_position, 3, game_state=game_state
+    )
+    crate_coordinates = []
+
+    if neighbours:
+        for coord in neighbours:
+            if game_state["field"][coord[0]][coord[1]] == 1:
+                crate_coordinates += [coord]
+
+        if len(crate_coordinates) == 0:
+            return 0
+        elif 1 <= len(crate_coordinates) < 4:
+            return 1
+        elif len(crate_coordinates) >= 4:
+            return 2
+
+    return 0
+
+
+def enemy_zone_feature(game_state: dict) -> int:
+    own_position = game_state["self"][-1]
+    all_enemy_fields = []
+    if_dangerous = []
+    for enemy in game_state["others"]:
+        neighbours_until_wall = get_neighboring_tiles_until_wall(
+            enemy[-1], 3, game_state=game_state
+        )
+        if neighbours_until_wall:
+            all_enemy_fields += neighbours_until_wall
+
+    if len(all_enemy_fields) > 0:
+        for bad_field in all_enemy_fields:
+            in_danger = own_position == bad_field
+            if_dangerous.append(in_danger)
+
+        return int(any(if_dangerous))
+    else:
+        return 0
+
+
+def state_to_features(self, game_state) -> np.array:
+    """Parses game state to features"""
+    features = np.zeros(9, dtype=np.int8)
+
+    # Feature 1: if on hot field or not
+    features[0] = hot_field_feature(game_state=game_state)
+
+    # Feature 2-5 ("Blockages")
+    features[1], features[2], features[3], features[4] = blockage_feature(
+        game_state=game_state
+    )
 
     # Feature 6 ("Going to new tiles")
-    num_visited_tiles = len(
-        history[1]
-    )  # history[2] contains agent coords of last 5 turns
-    if num_visited_tiles > 1:  # otherwise the feature is and is supposed to be 0 anyway
-        num_unique_visited_tiles = len(set(history[1]))
-        # of 5 tiles, 3 should be new -> 60%. for start of the episode: 2 out of 2, 2 out of 3, 3 out of 4
-        features[5] = 1 if (num_unique_visited_tiles / num_visited_tiles) >= 0.6 else 0
+    features[5] = progression_feature(self)
 
     # Feature 7: Next direction in shortest path to coin or crate
     direction = _shortest_path_feature(self, game_state)
@@ -543,56 +598,19 @@ def state_to_features(self, game_state, history) -> np.array:
     else:
         raise ValueError("Invalid directon to nearest coin/crate")
 
-    # Feature 8: amount of possibly destroyed crates: small: 0, medium: 1<4, high: >= 4
-    neighbours = get_neighboring_tiles_until_wall(
-        own_position, 3, game_state=game_state
-    )
-    crate_coordinates = []
-
-    if neighbours:
-        for coord in neighbours:
-            if game_state["field"][coord[0]][coord[1]] == 1:
-                crate_coordinates += [coord]
-
-        if len(crate_coordinates) == 0:
-            features[7] = 0
-        elif 1 <= len(crate_coordinates) < 4:
-            features[7] = 1
-        elif len(crate_coordinates) >= 4:
-            features[7] = 2
-
-    else:
-        features[7] = 0
+    # Feature 8: amount of crates within destruction reach: small: 0, medium: 1<4, high: >= 4
+    features[7] = surrounding_crates_feature(game_state=game_state)
 
     # Feature 9: if in opponents area
-    all_enemy_fields = []
-    for enemy in game_state["others"]:
-        neighbours_until_wall = get_neighboring_tiles_until_wall(
-            enemy[-1], 3, game_state=game_state
-        )
-        if neighbours_until_wall:
-            all_enemy_fields += neighbours_until_wall
-
-    if len(all_enemy_fields) > 0:
-        for bad_field in all_enemy_fields:
-            in_danger = own_position == bad_field
-            if_dangerous.append(in_danger)
-
-        features[8] = int(any(if_dangerous))
-    else:
-        features[8] = 0
+    features[8] = enemy_zone_feature(game_state=game_state)
 
     self.logger.debug(f"Feature vector: {features}")
 
-    self.logger.debug(
-        f"Shortest path feature says: {_shortest_path_feature(self, game_state)}"
-    )
-
-    return features_to_state(self, features)
+    return features_to_state(features)
 
 
-def features_to_state(self, feature_vector: np.array) -> int:
-    # TODO: handle case that file can't be opened, read or that feature vector can't be found (currently: returns None)
+def features_to_state(feature_vector: np.array) -> int:
+    # TODO: handle case that file can't be opened, read or that feature vector can't be found (currently: returns None/Error)
     with open("indexed_state_list.txt", encoding="utf-8", mode="r") as f:
         for i, state in enumerate(f.readlines()):
             if state.strip() == str(feature_vector):
