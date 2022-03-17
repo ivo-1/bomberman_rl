@@ -1,4 +1,9 @@
 from collections import deque, namedtuple
+from statistics import (
+    avg_seen_actions,
+    distribution_of_best_actions,
+    fraction_of_unseen_states,
+)
 from typing import List
 
 import numpy as np
@@ -79,11 +84,11 @@ def game_events_occurred(self, old_game_state, self_action: str, new_game_state,
     (if features = ... -> events.append(OUR_EVENT)). But events can also be added independently of features,
     just using game state in general. Leveraging of features more just to avoid code duplication.
     """
-
     self.history.append(new_game_state["self"][-1])
 
     old_state = self.old_state
-    new_state = state_to_features(self, new_game_state)
+    self.new_state = state_to_features(self, new_game_state)
+    new_state = self.new_state
 
     old_feature_dict = self.state_list[old_state]
     new_feature_dict = self.state_list[new_state]
@@ -192,10 +197,11 @@ def game_events_occurred(self, old_game_state, self_action: str, new_game_state,
         + self.discount_rate * np.max(self.q_table[new_state])
         - self.q_table[old_state, action_idx]
     )
-    self.logger.debug(f"Updated q-table: {self.q_table}")
 
-    self.logger.debug(
-        f'Encountered game event(s) {", ".join(map(repr, events))} in step {new_game_state["step"]}'
+    self.logger.info(
+        f'Encountered game event(s) {", ".join(map(repr, events))} in step {new_game_state["step"]}\n\
+        ----------------------------------------------------------------------------------------------\
+        ----------------------------------------------------------------------------------------------'
     )
 
 
@@ -223,6 +229,12 @@ def end_of_round(self, last_game_state, last_action, events):
     ) * np.exp(
         -self.exploration_decay_rate * self.episode
     )  # decay
+
+    self.logger.info(f"Fraction of unseen states: {fraction_of_unseen_states(self.q_table)}")
+    self.logger.info(f"Average seen actions per state: {avg_seen_actions(self.q_table)}")
+    self.logger.info(
+        f"Distribution of actions over all states: {distribution_of_best_actions(self.q_table)}"
+    )
 
 
 def reward_from_events(self, events: List[str]) -> int:

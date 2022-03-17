@@ -22,6 +22,7 @@ SHORTEST_PATH_ACTIONS = ["UP", "RIGHT", "DOWN", "LEFT"]
 def setup(self):
     """Sets up everything. (First call)"""
 
+    self.new_state = None
     self.history = deque(maxlen=5)  # tiles visited
     self.lattice_graph = nx.grid_2d_graph(m=COLS, n=ROWS)
     self.previous_distance = 0
@@ -34,8 +35,7 @@ def setup(self):
     # self.latest_q_table_path = "q_table-2022-03-14T162802-node45.npy"
     self.latest_q_table = np.load(self.latest_q_table_path)
 
-    self.logger.debug(f"Using q-table: {self.latest_q_table_path}")
-
+    self.logger.info(f"Using q-table: {self.latest_q_table_path}")
 
     self.previous_distance = 0
     self.current_distance = 0
@@ -82,9 +82,7 @@ def list_possible_states() -> np.array:
                                 "RIGHT",
                                 "LEFT",
                             ]:  # direction of nearest coin (or crate)
-                                for h in range(
-                                    3
-                                ):  # amount of surrounding crates (none, low, high)
+                                for h in range(3):  # amount of surrounding crates (none, low, high)
                                     for i in binary:  # in opponents bomb area?
                                         states.append([a, b, c, d, e, f, g, h, i])
     state_dicts = []
@@ -106,22 +104,35 @@ def list_possible_states() -> np.array:
 
 def act(self, game_state: dict) -> str:
     """Takes in the current game state and returns the chosen action in form of a string."""
-    state = state_to_features(self, game_state)
-    self.old_state = state
+    if self.new_state is None:  # is always None in test case
+        self.old_state = state_to_features(self, game_state)
+    else:  # in train case this is set in game_events_occured
+        self.old_state = self.new_state
+    state = self.old_state
+
+    # only for logging
+    safe_coins = [
+        coin
+        for coin in game_state["coins"]
+        if coin
+        not in [index for index, field in np.ndenumerate(game_state["explosion_map"]) if field != 0]
+    ]
+    self.logger.info(f"Current safe coins: {safe_coins}")
+    self.logger.info(f"Current self coord: {game_state['self'][-1]}")
 
     if self.train and np.random.random() < self.exploration_rate:
-        self.logger.debug("Exploring")
+        self.logger.info("Exploring")
         action = np.random.choice(ACTIONS)
-        self.logger.debug(f"Action chosen: {action}")
+        self.logger.info(f"Action chosen: {action}")
         return action
 
-    self.logger.debug("Exploiting")
+    self.logger.info("Exploiting")
     # TODO: Do we want to go 100% exploitation once we have learnt the q-table?
     # Alternative is to sample from the learnt q_table distribution.
     # print(state)
     self.logger.debug(f"State: {state}")
     action = ACTIONS[np.argmax(self.q_table[state])]
-    self.logger.debug(f"Action chosen: {action}")
+    self.logger.info(f"Action chosen: {action}")
     return action
 
 
@@ -132,9 +143,9 @@ def _determine_exploration_decay_rate(self) -> float:
     expr = (
         self.exploration_rate_end
         + (self.exploration_rate_initial - self.exploration_rate_end) * exp(-x * self.n_rounds)
-    ) - (self.exploration_rate_end + 0.0001)
+    ) - (self.exploration_rate_end + 0.005)
     solution = solve(expr, x)[0]
-    self.logger.debug(f"Determined exploration decay rate: {solution}")
+    self.logger.info(f"Determined exploration decay rate: {solution}")
     return float(solution)
 
 
@@ -229,7 +240,7 @@ def _get_graph(self, game_state, crates_as_obstacles=True) -> Graph:
     # print(f"Bombs: {game_state['bombs']}")
     obstacles += active_explosions
 
-    self.logger.info(f"Obstacles: {obstacles}")
+    self.logger.debug(f"Obstacles: {obstacles}")
 
     graph = nx.grid_2d_graph(m=COLS, n=ROWS)
 
@@ -260,6 +271,7 @@ def _get_action(self, self_coord, shortest_path) -> Action:
     self.current_distance = len(shortest_path) - 1
     self.logger.debug(f"self.previous_distance is {self.previous_distance}")
     self.logger.debug(f"self.current_distance is {self.current_distance}")
+    self.logger.info(f"Determined goal at {goal_coord} from shortest path feature")
 
     # x-coord is the same
     if self_coord[0] == goal_coord[0]:
@@ -306,9 +318,8 @@ def _shortest_path_feature(self, game_state) -> Action:
     graph = _get_graph(self, game_state)
     graph_with_crates = _get_graph(self, game_state, crates_as_obstacles=False)
 
-    self.logger.info(f"Current Graph nodes: {graph.nodes}")
+    self.logger.debug(f"Current Graph nodes: {graph.nodes}")
     self_coord = game_state["self"][3]
-    self.logger.info(f"Current self coord: {self_coord}")
 
     safe_coins = [
         coin
@@ -316,7 +327,6 @@ def _shortest_path_feature(self, game_state) -> Action:
         if coin
         not in [index for index, field in np.ndenumerate(game_state["explosion_map"]) if field != 0]
     ]
-    self.logger.info(f"Current safe coins: {safe_coins}")
 
     # no coins on board and no crates (maybe also no opponents ==> suicide?) ==> just return something
     if not any(safe_coins) and not any(
@@ -342,7 +352,7 @@ def _shortest_path_feature(self, game_state) -> Action:
             # in some edge cases it can happen that a crate is unreachable b/c of explosion
             # even though we don't consider crates themselves as obstacles
             except nx.exception.NetworkXNoPath:
-                self.logger.debug("Crazy edge case (unreachable crate) occured!")
+                self.logger.info("Crazy edge case (unreachable crate) occured!")
                 continue
 
             # self.logger.debug(f"Current path: {current_path} with path length: {current_path_length}
@@ -350,15 +360,14 @@ def _shortest_path_feature(self, game_state) -> Action:
 
             # not gonna get better than 1, might save a bit of computation time
             if current_path_length == 1:
-                self.logger.debug("Standing directly next to crate!")
+                self.logger.info("Standing directly next to crate!")
                 return _get_action(self, self_coord, current_path)
 
             elif current_path_length < best[1]:
                 best = (current_path, current_path_length)
 
-        self.logger.debug(f"BEST: {best}")
         if best == (None, np.inf):
-            self.logger.debug(
+            self.logger.info(
                 "There are no coins and no crate is reachable even if not considering crates as obstacles"
             )
             return np.random.choice(SHORTEST_PATH_ACTIONS)
@@ -372,8 +381,6 @@ def _shortest_path_feature(self, game_state) -> Action:
 
         # find shortest paths to all coins by all agents
         for coin_coord in safe_coins:
-            self.logger.info(f"Looking at coin at: {coin_coord}")
-
             try:
                 current_path, current_path_length = _find_shortest_path(
                     graph, self_coord, coin_coord
@@ -388,7 +395,7 @@ def _shortest_path_feature(self, game_state) -> Action:
                     )
                     current_reachable = False
                 except nx.exception.NetworkXNoPath:
-                    self.logger.debug(
+                    self.logger.info(
                         "Crazy edge case (unreachable coin for us even though crates not \
                         considered as obstacles) occured!"
                     )
@@ -425,11 +432,10 @@ def _shortest_path_feature(self, game_state) -> Action:
                         current_other_agent_reachable = False
 
                     except nx.exception.NetworkXNoPath:
-                        self.logger.debug(
+                        self.logger.info(
                             f"Crazy edge case (unreachable coin for other agent {other_agent} even \
                             though crates not considered as obstacles) occured!"
                         )
-                        self.logger.debug(f"Graph with crates: {graph_with_crates}")
                         continue
 
                 # penalize with heuristic of 7 more fields if unreachable
@@ -491,11 +497,11 @@ def _shortest_path_feature(self, game_state) -> Action:
                 # closest coin
             ):
                 self.logger.debug(
-                    f"We are able to reach coin at {shortest_path_to_coin} and we are closest to it"
+                    f"We are able to reach coin at {shortest_path_to_coin[0][1]} and we are closest to it"
                 )
                 return _get_action(self, self_coord, shortest_path_to_coin[0][0])
 
-        self.logger.debug("Fallback Action")
+        self.logger.info("Fallback Action")
         # unless we are not closest to any of our reachable coins then we return action that leads us to
         # the coin we are nearest too anyway
         try:
@@ -560,9 +566,7 @@ def blockage_feature(game_state: dict) -> List[int]:
 
 
 def progression_feature(self) -> int:
-    num_visited_tiles = len(
-        self.history
-    )  # history contains agent coords of last 5 turns
+    num_visited_tiles = len(self.history)  # history contains agent coords of last 5 turns
     if num_visited_tiles > 1:  # otherwise the feature is and is supposed to be 0 anyway
         num_unique_visited_tiles = len(set(self.history))
         # of 5 tiles, 3 should be new -> 60%. for start of the episode: 2 out of 2, 2 out of 3, 3 out of 4
@@ -572,9 +576,7 @@ def progression_feature(self) -> int:
 
 def surrounding_crates_feature(game_state: dict) -> int:
     own_position = game_state["self"][-1]
-    neighbours = get_neighboring_tiles_until_wall(
-        own_position, 3, game_state=game_state
-    )
+    neighbours = get_neighboring_tiles_until_wall(own_position, 3, game_state=game_state)
     crate_coordinates = []
 
     if neighbours:
@@ -648,7 +650,7 @@ def state_to_features(self, game_state) -> np.array:
     if direction in ["DOWN", "UP", "RIGHT", "LEFT"]:
         state_dict["coin_direction"] = direction
     else:
-        self.logger.debug(direction)
+        self.logger.debug(f"Shortest path feature produced invalid return: {direction}")
         raise ValueError("Invalid directon to nearest coin/crate")
 
     # Feature 8: amount of crates within destruction reach: small: 0, medium: 1<4, high: >= 4
@@ -657,15 +659,13 @@ def state_to_features(self, game_state) -> np.array:
     # Feature 9: if in opponents area
     state_dict["enemy_danger_zone"] = enemy_zone_feature(game_state=game_state)
 
-    self.logger.debug(f"Feature dict: {state_dict}")
+    self.logger.info(f"Feature dict: {state_dict}")
 
     for i, state in enumerate(self.state_list):
         if state == state_dict:
             return i
 
-    raise ReferenceError(
-        "State dict created by state_to_features was not found in self.state_list"
-    )
+    raise ReferenceError("State dict created by state_to_features was not found in self.state_list")
 
 
 # Only to demonstrate test
