@@ -22,8 +22,11 @@ SHORTEST_PATH_ACTIONS = ["UP", "RIGHT", "DOWN", "LEFT"]
 def setup(self):
     """Sets up everything. (First call)"""
 
-    # Where to put?
-    self.history = [0, deque(maxlen=5)]  # [num_of_coins_collected, tiles_visited]
+    self.history = deque(maxlen=5)  # tiles visited
+    self.lattice_graph = nx.grid_2d_graph(m=COLS, n=ROWS)
+    self.previous_distance = 0
+    self.current_distance = 0
+    self.state_list = list_possible_states()
 
     # find latest q_table
     list_of_q_tables = glob.glob("*.npy")  # * means all if need specific format then *.csv
@@ -32,6 +35,7 @@ def setup(self):
     self.latest_q_table = np.load(self.latest_q_table_path)
 
     self.logger.debug(f"Using q-table: {self.latest_q_table_path}")
+
 
     self.previous_distance = 0
     self.current_distance = 0
@@ -62,9 +66,47 @@ def setup(self):
         self.q_table = self.latest_q_table
 
 
+def list_possible_states() -> np.array:
+    states = []
+    binary = range(2)
+    # TODO it has to be possible to do this in a less horrible way somehow
+    for a in binary:  # in bomb danger zone?
+        for b in binary:  # blocked DOWN?
+            for c in binary:  # blocked UP?
+                for d in binary:  # blocked RIGHT?
+                    for e in binary:  # blocked LEFT?
+                        for f in binary:  # progressed?
+                            for g in [
+                                "DOWN",
+                                "UP",
+                                "RIGHT",
+                                "LEFT",
+                            ]:  # direction of nearest coin (or crate)
+                                for h in range(
+                                    3
+                                ):  # amount of surrounding crates (none, low, high)
+                                    for i in binary:  # in opponents bomb area?
+                                        states.append([a, b, c, d, e, f, g, h, i])
+    state_dicts = []
+    for vector in states:
+        state_dict = {
+            "bomb_danger_zone": vector[0],
+            "blocked_down": vector[1],
+            "blocked_up": vector[2],
+            "blocked_right": vector[3],
+            "blocked_left": vector[4],
+            "progressed": vector[5],
+            "coin_direction": vector[6],
+            "surrounding_crates": vector[7],
+            "enemy_danger_zone": vector[8],
+        }
+        state_dicts.append(state_dict)
+    return state_dicts
+
+
 def act(self, game_state: dict) -> str:
     """Takes in the current game state and returns the chosen action in form of a string."""
-    state = state_to_features(self, game_state, self.history)
+    state = state_to_features(self, game_state)
     self.old_state = state
 
     if self.train and np.random.random() < self.exploration_rate:
@@ -354,6 +396,12 @@ def _shortest_path_feature(self, game_state) -> Action:
 
             # all other agents are dead
             if not any(game_state["others"]):
+                shortest_paths_to_coins.append(
+                    (
+                        (current_path, current_path_length, current_reachable),
+                        (None, np.inf),
+                    )
+                )
                 continue
 
             for other_agent in game_state["others"]:
@@ -459,21 +507,10 @@ def _shortest_path_feature(self, game_state) -> Action:
             return np.random.choice(SHORTEST_PATH_ACTIONS)
 
 
-def state_to_features(self, game_state, history) -> np.array:
-    # TODO: vectorize?
-    # TODO: combine different for loops (!)
-    """Parses game state to features"""
-    features = np.zeros(9, dtype=np.int8)
-
-    try:
-        own_position = game_state["self"][-1]
-        enemy_positions = [enemy[-1] for enemy in game_state["others"]]
-    except TypeError:
-        print("First game state is none")
-        return
-
-    # Feature 1: if on hot field or not
+def hot_field_feature(game_state: dict) -> int:
+    own_position = game_state["self"][-1]
     all_hot_fields, if_dangerous = [], []
+
     if len(game_state["bombs"]) > 0:
         for bomb in game_state["bombs"]:
             bomb_pos = bomb[0]  # coordinates of bomb as type tuple
@@ -488,11 +525,16 @@ def state_to_features(self, game_state, history) -> np.array:
                 in_danger = own_position == lava
                 if_dangerous.append(in_danger)
 
-            features[0] = int(any(if_dangerous))
+            return int(any(if_dangerous))
     else:
-        features[0] = 0
+        return 0
 
-    # Feature 2-5 ("Blockages")
+
+def blockage_feature(game_state: dict) -> List[int]:
+    own_position = game_state["self"][-1]
+    enemy_positions = [enemy[-1] for enemy in game_state["others"]]
+    results = [0, 0, 0, 0]
+
     for i, neighboring_coord in enumerate(_get_neighboring_tiles(own_position, 1)):
         neighboring_x, neighboring_y = neighboring_coord
         neighboring_content = game_state["field"][neighboring_x][
@@ -513,35 +555,26 @@ def state_to_features(self, game_state, history) -> np.array:
             or explosion
             or ripe_bomb
         ):
-            features[1 + i] = 1
-        else:
-            features[1 + i] = 0
+            results[i] = 1
+    return results
 
-    # Feature 6 ("Going to new tiles")
-    num_visited_tiles = len(history[1])  # history[2] contains agent coords of last 5 turns
+
+def progression_feature(self) -> int:
+    num_visited_tiles = len(
+        self.history
+    )  # history contains agent coords of last 5 turns
     if num_visited_tiles > 1:  # otherwise the feature is and is supposed to be 0 anyway
-        num_unique_visited_tiles = len(set(history[1]))
-        # of 5 tiles, 3 should be new -> 60%.
-        # for start of the episode: 2 out of 2, 2 out of 3, 3 out of 4
-        features[5] = 1 if (num_unique_visited_tiles / num_visited_tiles) >= 0.6 else 0
+        num_unique_visited_tiles = len(set(self.history))
+        # of 5 tiles, 3 should be new -> 60%. for start of the episode: 2 out of 2, 2 out of 3, 3 out of 4
+        return 1 if (num_unique_visited_tiles / num_visited_tiles) >= 0.6 else 0
+    return 0
 
-    # Feature 7: Next direction in shortest path to coin or crate
-    direction = _shortest_path_feature(self, game_state)
-    # same order as features 2-5
-    if direction == "DOWN":
-        features[6] = 0
-    elif direction == "UP":
-        features[6] = 1
-    elif direction == "RIGHT":
-        features[6] = 2
-    elif direction == "LEFT":
-        features[6] = 3
-    else:
-        self.logger.debug(f"Returned invalid direction: {direction}")
-        raise ValueError("Invalid directon to nearest coin/crate")
 
-    # Feature 8: amount of possibly destroyed crates: small: 0, medium: 1<4, high: >= 4
-    neighbours = get_neighboring_tiles_until_wall(own_position, 3, game_state=game_state)
+def surrounding_crates_feature(game_state: dict) -> int:
+    own_position = game_state["self"][-1]
+    neighbours = get_neighboring_tiles_until_wall(
+        own_position, 3, game_state=game_state
+    )
     crate_coordinates = []
 
     if neighbours:
@@ -550,17 +583,19 @@ def state_to_features(self, game_state, history) -> np.array:
                 crate_coordinates += [coord]
 
         if len(crate_coordinates) == 0:
-            features[7] = 0
+            return 0
         elif 1 <= len(crate_coordinates) < 4:
-            features[7] = 1
+            return 1
         elif len(crate_coordinates) >= 4:
-            features[7] = 2
+            return 2
 
-    else:
-        features[7] = 0
+    return 0
 
-    # Feature 9: if in opponents area
+
+def enemy_zone_feature(game_state: dict) -> int:
+    own_position = game_state["self"][-1]
     all_enemy_fields = []
+    if_dangerous = []
     for enemy in game_state["others"]:
         neighbours_until_wall = get_neighboring_tiles_until_wall(
             enemy[-1], 3, game_state=game_state
@@ -573,24 +608,64 @@ def state_to_features(self, game_state, history) -> np.array:
             in_danger = own_position == bad_field
             if_dangerous.append(in_danger)
 
-        features[8] = int(any(if_dangerous))
+        return int(any(if_dangerous))
     else:
-        features[8] = 0
-
-    self.logger.debug(f"Feature vector: {features}")
-
-    self.logger.debug(f"Shortest path feature says: {_shortest_path_feature(self, game_state)}")
-
-    return features_to_state(self, features)
+        return 0
 
 
-def features_to_state(self, feature_vector: np.array) -> int:
-    # TODO: handle case that file can't be opened, read or that feature vector
-    # can't be found (currently: returns None)
-    with open("indexed_state_list.txt", encoding="utf-8", mode="r") as f:
-        for i, state in enumerate(f.readlines()):
-            if state.strip() == str(feature_vector):
-                return i
+def state_to_features(self, game_state) -> np.array:
+    """Parses game state to features"""
+
+    state_dict = {
+        "bomb_danger_zone": None,
+        "blocked_down": None,
+        "blocked_up": None,
+        "blocked_right": None,
+        "blocked_left": None,
+        "progressed": None,
+        "coin_direction": None,
+        "surrounding_crates": None,
+        "enemy_danger_zone": None,
+    }
+
+    # Feature 1: if on hot field or not
+    state_dict["bomb_danger_zone"] = hot_field_feature(game_state=game_state)
+
+    # Feature 2-5 ("Blockages")
+    (
+        state_dict["blocked_down"],
+        state_dict["blocked_up"],
+        state_dict["blocked_right"],
+        state_dict["blocked_left"],
+    ) = blockage_feature(game_state=game_state)
+
+    # Feature 6 ("Going to new tiles")
+    state_dict["progressed"] = progression_feature(self)
+
+    # Feature 7: Next direction in shortest path to coin or crate
+    direction = _shortest_path_feature(self, game_state)
+    # same order as features 2-5
+    if direction in ["DOWN", "UP", "RIGHT", "LEFT"]:
+        state_dict["coin_direction"] = direction
+    else:
+        self.logger.debug(direction)
+        raise ValueError("Invalid directon to nearest coin/crate")
+
+    # Feature 8: amount of crates within destruction reach: small: 0, medium: 1<4, high: >= 4
+    state_dict["surrounding_crates"] = surrounding_crates_feature(game_state=game_state)
+
+    # Feature 9: if in opponents area
+    state_dict["enemy_danger_zone"] = enemy_zone_feature(game_state=game_state)
+
+    self.logger.debug(f"Feature dict: {state_dict}")
+
+    for i, state in enumerate(self.state_list):
+        if state == state_dict:
+            return i
+
+    raise ReferenceError(
+        "State dict created by state_to_features was not found in self.state_list"
+    )
 
 
 # Only to demonstrate test

@@ -80,7 +80,7 @@ def game_events_occurred(self, old_game_state, self_action: str, new_game_state,
     just using game state in general. Leveraging of features more just to avoid code duplication.
     """
 
-    self.history[1].append(new_game_state["self"][-1])
+    self.history.append(new_game_state["self"][-1])
 
     # skip first timestep (STEP 1)
     if old_game_state is None:
@@ -89,40 +89,39 @@ def game_events_occurred(self, old_game_state, self_action: str, new_game_state,
         return
 
     old_state = self.old_state
-    new_state = state_to_features(self, new_game_state, self.history)
+    new_state = state_to_features(self, new_game_state)
 
-    with open("indexed_state_list.txt", encoding="utf-8", mode="r") as f:
-        state_list = f.readlines()
-        feature_vectors = []
-        for state in state_list:
-            cleaned_state = state.strip("\n").strip("[").strip("]")
-            feature_vectors.append(list(map(lambda x: int(x), cleaned_state.split())))
-
-    old_feature_vector = feature_vectors[old_state]
-    new_feature_vector = feature_vectors[new_state]
+    old_feature_dict = self.state_list[old_state]
+    new_feature_dict = self.state_list[new_state]
 
     # Custom events and stuff
 
-    if old_feature_vector[0] == 1 and new_feature_vector[0] == 0:
+    if (
+        old_feature_dict["bomb_danger_zone"] == 1
+        and new_feature_dict["bomb_danger_zone"] == 0
+    ):
         events.append(FLED)
-    elif old_feature_vector[0] == 0 and new_feature_vector[0] == 1:
+    elif (
+        old_feature_dict["bomb_danger_zone"] == 0
+        and new_feature_dict["bomb_danger_zone"] == 1
+    ):
         events.append(SUICIDAL)
 
-    if new_feature_vector[5] == 1 and not e.INVALID_ACTION in events:
+    if new_feature_dict["progressed"] == 1 and not e.INVALID_ACTION in events:
         events.append(PROGRESSED)
-    if new_feature_vector[5] == 0:
+    if new_feature_dict["progressed"] == 0:
         events.append(STAGNATED)
 
     if new_game_state["self"][-1] != old_game_state["self"][-1]:
         events.append(MOVED)
 
-    if old_feature_vector[1] == 1 and self_action == "DOWN":
+    if old_feature_dict["blocked_down"] == 1 and self_action == "DOWN":
         events.append(WAS_BLOCKED)
-    elif old_feature_vector[2] == 1 and self_action == "UP":
+    elif old_feature_dict["blocked_up"] == 1 and self_action == "UP":
         events.append(WAS_BLOCKED)
-    elif old_feature_vector[3] == 1 and self_action == "RIGHT":
+    elif old_feature_dict["blocked_right"] == 1 and self_action == "RIGHT":
         events.append(WAS_BLOCKED)
-    elif old_feature_vector[4] == 1 and self_action == "LEFT":
+    elif old_feature_dict["blocked_down"] == 1 and self_action == "LEFT":
         events.append(WAS_BLOCKED)
 
     old_neighbors = get_neighboring_tiles_until_wall(
@@ -144,7 +143,7 @@ def game_events_occurred(self, old_game_state, self_action: str, new_game_state,
     elif crate_counter[0] > crate_counter[1]:
         events.append(DECREASED_SURROUNDING_CRATES)
 
-    if old_feature_vector[0] == 1:
+    if old_feature_dict["bomb_danger_zone"] == 1:
         bomb_positions = []
         for tile in old_neighbors:
             if tile in [bomb[0] for bomb in old_game_state["bombs"]]:
@@ -174,13 +173,7 @@ def game_events_occurred(self, old_game_state, self_action: str, new_game_state,
     elif self.previous_distance > self.current_distance:
         events.append(INCREASED_DISTANCE)
 
-    if old_feature_vector[6] == 0 and self_action == "DOWN":
-        events.append(FOLLOWED_DIRECTION)
-    elif old_feature_vector[6] == 1 and self_action == "UP":
-        events.append(FOLLOWED_DIRECTION)
-    elif old_feature_vector[6] == 2 and self_action == "RIGHT":
-        events.append(FOLLOWED_DIRECTION)
-    elif old_feature_vector[6] == 3 and self_action == "LEFT":
+    if new_feature_dict["coin_direction"] == self_action:
         events.append(FOLLOWED_DIRECTION)
 
     self.logger.debug(f'Old coords: {old_game_state["self"][3]}')
@@ -222,7 +215,7 @@ def end_of_round(self, last_game_state, last_action, events):
     """Called once per agent after the last step of a round."""
     self.transitions.append(
         Transition(
-            state_to_features(self, last_game_state, self.history),
+            state_to_features(self, last_game_state),
             last_action,
             None,
             reward_from_events(self, events),
