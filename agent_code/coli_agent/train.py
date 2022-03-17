@@ -89,31 +89,37 @@ def game_events_occurred(
     old_state = self.old_state
     new_state = state_to_features(self, new_game_state)
 
-    old_feature_vector = self.state_list[old_state]
-    new_feature_vector = self.state_list[new_state]
+    old_feature_dict = self.state_list[old_state]
+    new_feature_dict = self.state_list[new_state]
 
     # Custom events and stuff
 
-    if old_feature_vector[0] == 1 and new_feature_vector[0] == 0:
+    if (
+        old_feature_dict["bomb_danger_zone"] == 1
+        and new_feature_dict["bomb_danger_zone"] == 0
+    ):
         events.append(FLED)
-    elif old_feature_vector[0] == 0 and new_feature_vector[0] == 1:
+    elif (
+        old_feature_dict["bomb_danger_zone"] == 0
+        and new_feature_dict["bomb_danger_zone"] == 1
+    ):
         events.append(SUICIDAL)
 
-    if new_feature_vector[5] == 1 and not e.INVALID_ACTION in events:
+    if new_feature_dict["progressed"] == 1 and not e.INVALID_ACTION in events:
         events.append(PROGRESSED)
-    if new_feature_vector[5] == 0:
+    if new_feature_dict["progressed"] == 0:
         events.append(STAGNATED)
 
     if new_game_state["self"][-1] != old_game_state["self"][-1]:
         events.append(MOVED)
 
-    if old_feature_vector[1] == 1 and self_action == "DOWN":
+    if old_feature_dict["blocked_down"] == 1 and self_action == "DOWN":
         events.append(WAS_BLOCKED)
-    elif old_feature_vector[2] == 1 and self_action == "UP":
+    elif old_feature_dict["blocked_up"] == 1 and self_action == "UP":
         events.append(WAS_BLOCKED)
-    elif old_feature_vector[3] == 1 and self_action == "RIGHT":
+    elif old_feature_dict["blocked_right"] == 1 and self_action == "RIGHT":
         events.append(WAS_BLOCKED)
-    elif old_feature_vector[4] == 1 and self_action == "LEFT":
+    elif old_feature_dict["blocked_down"] == 1 and self_action == "LEFT":
         events.append(WAS_BLOCKED)
 
     old_neighbors = get_neighboring_tiles_until_wall(
@@ -135,7 +141,7 @@ def game_events_occurred(
     elif crate_counter[0] > crate_counter[1]:
         events.append(DECREASED_SURROUNDING_CRATES)
 
-    if old_feature_vector[0] == 1:
+    if old_feature_dict["bomb_danger_zone"] == 1:
         bomb_positions = []
         for tile in old_neighbors:
             if tile in [bomb[0] for bomb in old_game_state["bombs"]]:
@@ -165,13 +171,13 @@ def game_events_occurred(
     elif self.previous_distance > self.current_distance:
         events.append(INCREASED_DISTANCE)
 
-    if old_feature_vector[6] == 0 and self_action == "DOWN":
+    if new_feature_dict["coin_direction"] == 0 and self_action == "DOWN":
         events.append(FOLLOWED_DIRECTION)
-    elif old_feature_vector[6] == 1 and self_action == "UP":
+    elif new_feature_dict["coin_direction"] == 1 and self_action == "UP":
         events.append(FOLLOWED_DIRECTION)
-    elif old_feature_vector[6] == 2 and self_action == "RIGHT":
+    elif new_feature_dict["coin_direction"] == 2 and self_action == "RIGHT":
         events.append(FOLLOWED_DIRECTION)
-    elif old_feature_vector[6] == 3 and self_action == "LEFT":
+    elif new_feature_dict["coin_direction"] == 3 and self_action == "LEFT":
         events.append(FOLLOWED_DIRECTION)
 
     self.logger.debug(f'Old coords: {old_game_state["self"][3]}')
