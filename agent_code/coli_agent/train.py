@@ -89,15 +89,8 @@ def game_events_occurred(
     old_state = self.old_state
     new_state = state_to_features(self, new_game_state)
 
-    with open("indexed_state_list.txt", encoding="utf-8", mode="r") as f:
-        state_list = f.readlines()
-        feature_vectors = []
-        for state in state_list:
-            cleaned_state = state.strip("\n").strip("[").strip("]")
-            feature_vectors.append(list(map(lambda x: int(x), cleaned_state.split())))
-
-    old_feature_vector = feature_vectors[old_state]
-    new_feature_vector = feature_vectors[new_state]
+    old_feature_vector = self.state_list[old_state]
+    new_feature_vector = self.state_list[new_state]
 
     # Custom events and stuff
 

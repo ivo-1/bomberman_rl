@@ -21,8 +21,11 @@ ACTIONS = ["UP", "RIGHT", "DOWN", "LEFT", "WAIT", "BOMB"]
 def setup(self):
     """Sets up everything. (First call)"""
 
-    # Where to put?
     self.history = deque(maxlen=5)  # tiles visited
+    self.lattice_graph = nx.grid_2d_graph(m=COLS, n=ROWS)
+    self.previous_distance = 0
+    self.current_distance = 0
+    self.state_list = list_possible_states()
 
     # find latest q_table
     list_of_q_tables = glob.glob(
@@ -33,10 +36,6 @@ def setup(self):
     self.latest_q_table = np.load(self.latest_q_table_path)
 
     self.logger.debug(f"Using q-table: {self.latest_q_table_path}")
-
-    self.lattice_graph = nx.grid_2d_graph(m=COLS, n=ROWS)
-    self.previous_distance = 0
-    self.current_distance = 0
 
     # train if flag is present or if there is no q_table present
     if self.train or not os.path.isfile(self.latest_q_table_path):
@@ -61,6 +60,25 @@ def setup(self):
     else:
         self.logger.info("Using latest Q-Table for testing")
         self.q_table = self.latest_q_table
+
+
+def list_possible_states() -> np.array:
+    states = []
+    binary = range(2)
+    # TODO it has to be possible to do this in a less horrible way somehow
+    for a in binary:  # in bomb danger zone?
+        for b in binary:  # blocked DOWN?
+            for c in binary:  # blocked UP?
+                for d in binary:  # blocked RIGHT?
+                    for e in binary:  # blocked LEFT?
+                        for f in binary:  # progressed?
+                            for g in range(4):  # direction of nearest coin (or crate)
+                                for h in range(
+                                    3
+                                ):  # amount of surrounding crates (none, low, high)
+                                    for i in binary:  # in opponents bomb area?
+                                        states.append([a, b, c, d, e, f, g, h, i])
+    return np.array(states)
 
 
 def act(self, game_state: dict) -> str:
@@ -606,15 +624,11 @@ def state_to_features(self, game_state) -> np.array:
 
     self.logger.debug(f"Feature vector: {features}")
 
-    return features_to_state(features)
+    corresponding_state = int(
+        np.where(np.all(self.state_list == features, axis=1))[0]
+    )  # index of row which == features
 
-
-def features_to_state(feature_vector: np.array) -> int:
-    # TODO: handle case that file can't be opened, read or that feature vector can't be found (currently: returns None/Error)
-    with open("indexed_state_list.txt", encoding="utf-8", mode="r") as f:
-        for i, state in enumerate(f.readlines()):
-            if state.strip() == str(feature_vector):
-                return i
+    return corresponding_state
 
 
 # Only to demonstrate test
