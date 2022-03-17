@@ -82,12 +82,6 @@ def game_events_occurred(self, old_game_state, self_action: str, new_game_state,
 
     self.history.append(new_game_state["self"][-1])
 
-    # skip first timestep (STEP 1)
-    if old_game_state is None:
-        self.logger.debug(f"Decided for action: {self_action}")
-        self.logger.debug("First game state is None - skipping...")
-        return
-
     old_state = self.old_state
     new_state = state_to_features(self, new_game_state)
 
@@ -96,15 +90,9 @@ def game_events_occurred(self, old_game_state, self_action: str, new_game_state,
 
     # Custom events and stuff
 
-    if (
-        old_feature_dict["bomb_danger_zone"] == 1
-        and new_feature_dict["bomb_danger_zone"] == 0
-    ):
+    if old_feature_dict["bomb_danger_zone"] == 1 and new_feature_dict["bomb_danger_zone"] == 0:
         events.append(FLED)
-    elif (
-        old_feature_dict["bomb_danger_zone"] == 0
-        and new_feature_dict["bomb_danger_zone"] == 1
-    ):
+    elif old_feature_dict["bomb_danger_zone"] == 0 and new_feature_dict["bomb_danger_zone"] == 1:
         events.append(SUICIDAL)
 
     if new_feature_dict["progressed"] == 1 and not e.INVALID_ACTION in events:
