@@ -37,9 +37,6 @@ def setup(self):
 
     self.logger.info(f"Using q-table: {self.latest_q_table_path}")
 
-    self.previous_distance = 0
-    self.current_distance = 0
-
     # train if flag is present or if there is no q_table present
     if self.train or not os.path.isfile(self.latest_q_table_path):
         self.logger.info("Setting up Q-Learning algorithm")
@@ -497,7 +494,7 @@ def _shortest_path_feature(self, game_state) -> Action:
                 # closest coin
             ):
                 self.logger.debug(
-                    f"We are able to reach coin at {shortest_path_to_coin[0][1]} and we are closest to it"
+                    f"We are able to reach coin at {shortest_path_to_coin[0]} and we are closest to it"
                 )
                 return _get_action(self, self_coord, shortest_path_to_coin[0][0])
 
