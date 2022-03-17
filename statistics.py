@@ -1,6 +1,9 @@
 import argparse
+from math import dist
 
 import numpy as np
+
+ACTIONS = ["UP", "RIGHT", "DOWN", "LEFT", "WAIT", "BOMB"]
 
 parser = argparse.ArgumentParser(description="Calculates stats from a given q-table")
 parser.add_argument("q_table", type=str, help="Path to the q-table you want to calculate stats for")
@@ -21,9 +24,22 @@ def avg_seen_actions(q_table: np.array) -> float:
     return np.average(action_count_per_state)
 
 
+def distribution_of_best_actions(q_table: np.array) -> dict:
+    best_actions_per_state = list(np.argmax(q_table, axis=1))
+    distribution = {}
+    for action in ACTIONS:
+        action_idx = ACTIONS.index(action)
+        distribution[action] = best_actions_per_state.count(action_idx) / len(
+            best_actions_per_state
+        )
+
+    return distribution
+
+
 if __name__ == "__main__":
     args = parser.parse_args()
     q_table = np.load(args.q_table)
 
     print(f"Fraction of unseen states: {fraction_of_unseen_states(q_table)}")
-    print(f"Average seen actions over per state: {avg_seen_actions(q_table)}")
+    print(f"Average seen actions per state: {avg_seen_actions(q_table)}")
+    print(f"Distribution of actions over all states: {distribution_of_best_actions(q_table)}")
