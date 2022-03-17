@@ -391,6 +391,12 @@ def _shortest_path_feature(self, game_state) -> action:
 
             # all other agents are dead
             if not any(game_state["others"]):
+                shortest_paths_to_coins.append(
+                    (
+                        (current_path, current_path_length, current_reachable),
+                        (None, np.inf),
+                    )
+                )
                 continue
 
             for other_agent in game_state["others"]:
@@ -642,6 +648,7 @@ def state_to_features(self, game_state) -> np.array:
     elif direction == "LEFT":
         state_dict["coin_direction"] = 3
     else:
+        self.logger.debug(direction)
         raise ValueError("Invalid directon to nearest coin/crate")
 
     # Feature 8: amount of crates within destruction reach: small: 0, medium: 1<4, high: >= 4
