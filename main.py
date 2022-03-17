@@ -30,9 +30,7 @@ class Timekeeper:
             sleep(duration)
 
 
-def world_controller(
-    world, n_rounds, *, gui, every_step, turn_based, make_video, update_interval
-):
+def world_controller(world, n_rounds, *, gui, every_step, turn_based, make_video, update_interval):
     if make_video and not gui.screenshot_dir.exists():
         gui.screenshot_dir.mkdir()
 
@@ -126,9 +124,7 @@ def main(argv=None):
 
     play_parser.add_argument("--continue_training", default=False, action="store_true")
 
-    play_parser.add_argument(
-        "--continue-without-training", default=False, action="store_true"
-    )
+    play_parser.add_argument("--continue-without-training", default=False, action="store_true")
     # play_parser.add_argument("--single-process", default=False, action="store_true")
 
     play_parser.add_argument("--scenario", default="classic", choices=s.SCENARIOS)
@@ -139,9 +135,7 @@ def main(argv=None):
         help="Reset the world's random number generator to a known number for reproducibility",
     )
 
-    play_parser.add_argument(
-        "--n-rounds", type=int, default=10, help="How many rounds to play"
-    )
+    play_parser.add_argument("--n-rounds", type=int, default=10, help="How many rounds to play")
     play_parser.add_argument(
         "--save-replay",
         const=True,
@@ -191,9 +185,7 @@ def main(argv=None):
             default=0.1,
             help="How often agents take steps (ignored without GUI)",
         )
-        sub.add_argument(
-            "--log-dir", default=os.path.dirname(os.path.abspath(__file__)) + "/logs"
-        )
+        sub.add_argument("--log-dir", default=os.path.dirname(os.path.abspath(__file__)) + "/logs")
         sub.add_argument(
             "--save-stats",
             const=True,
@@ -231,12 +223,17 @@ def main(argv=None):
             args.continue_without_training = True
         if args.my_agent:
             agents.append(
-                (args.my_agent, len(agents) < args.train, args.continue_training)
+                (
+                    args.my_agent,
+                    len(agents) < args.train,
+                    args.continue_training,
+                    args.n_rounds,
+                )
             )
             args.agents = ["rule_based_agent"] * (s.MAX_AGENTS - 1)
         for agent_name in args.agents:
             agents.append(
-                (agent_name, len(agents) < args.train, args.continue_training)
+                (agent_name, len(agents) < args.train, args.continue_training, args.n_rounds)
             )
 
         world = BombeRLeWorld(args, agents)
