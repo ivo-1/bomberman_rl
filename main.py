@@ -234,12 +234,10 @@ def main(argv=None):
                 (args.my_agent, len(agents) < args.train, args.continue_training)
             )
             args.agents = ["rule_based_agent"] * (s.MAX_AGENTS - 1)
-        elif args.continue_training:
+        for agent_name in args.agents:
             agents.append(
-                (args.agents[0], len(agents) < args.train, args.continue_training)
+                (agent_name, len(agents) < args.train, args.continue_training)
             )
-        for agent_name in args.agents[1:]:
-            agents.append((agent_name, len(agents) < args.train, False))
 
         world = BombeRLeWorld(args, agents)
         every_step = not args.skip_frames
