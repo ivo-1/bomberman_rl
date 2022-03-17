@@ -72,7 +72,12 @@ def list_possible_states() -> np.array:
                 for d in binary:  # blocked RIGHT?
                     for e in binary:  # blocked LEFT?
                         for f in binary:  # progressed?
-                            for g in range(4):  # direction of nearest coin (or crate)
+                            for g in [
+                                "DOWN",
+                                "UP",
+                                "RIGHT",
+                                "LEFT",
+                            ]:  # direction of nearest coin (or crate)
                                 for h in range(
                                     3
                                 ):  # amount of surrounding crates (none, low, high)
@@ -633,14 +638,8 @@ def state_to_features(self, game_state) -> np.array:
     # Feature 7: Next direction in shortest path to coin or crate
     direction = _shortest_path_feature(self, game_state)
     # same order as features 2-5
-    if direction == "DOWN":
-        state_dict["coin_direction"] = 0
-    elif direction == "UP":
-        state_dict["coin_direction"] = 1
-    elif direction == "RIGHT":
-        state_dict["coin_direction"] = 2
-    elif direction == "LEFT":
-        state_dict["coin_direction"] = 3
+    if direction in ["DOWN", "UP", "RIGHT", "LEFT"]:
+        state_dict["coin_direction"] = direction
     else:
         raise ValueError("Invalid directon to nearest coin/crate")
 

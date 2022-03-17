@@ -171,13 +171,7 @@ def game_events_occurred(
     elif self.previous_distance > self.current_distance:
         events.append(INCREASED_DISTANCE)
 
-    if new_feature_dict["coin_direction"] == 0 and self_action == "DOWN":
-        events.append(FOLLOWED_DIRECTION)
-    elif new_feature_dict["coin_direction"] == 1 and self_action == "UP":
-        events.append(FOLLOWED_DIRECTION)
-    elif new_feature_dict["coin_direction"] == 2 and self_action == "RIGHT":
-        events.append(FOLLOWED_DIRECTION)
-    elif new_feature_dict["coin_direction"] == 3 and self_action == "LEFT":
+    if new_feature_dict["coin_direction"] == self_action:
         events.append(FOLLOWED_DIRECTION)
 
     self.logger.debug(f'Old coords: {old_game_state["self"][3]}')
