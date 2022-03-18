@@ -29,6 +29,15 @@ def setup(self):
     self.current_distance = 0
     self.state_list = list_possible_states()
 
+    # for plotting
+    self.q_table_fraction_unseen = []
+    self.q_table_average_seen = []
+    self.q_table_distribution_of_actions = []
+
+    self.exploration_rates_of_episodes = []
+    self.rewards_of_episodes = []
+    self.game_scores_of_episodes = []
+
     # find latest q_table
     list_of_q_tables = glob.glob("*.npy")  # * means all if need specific format then *.csv
     self.latest_q_table_path = max(list_of_q_tables, key=os.path.getctime)
