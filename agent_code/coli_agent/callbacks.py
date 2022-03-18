@@ -510,7 +510,7 @@ def _shortest_path_feature(self, game_state) -> Action:
             return np.random.choice(SHORTEST_PATH_ACTIONS)
 
 
-def hot_field_feature(game_state: dict) -> int:
+def hot_field_feature(self, game_state: dict) -> int:
     own_position = game_state["self"][-1]
     all_hot_fields, if_dangerous = [], []
 
@@ -522,10 +522,13 @@ def hot_field_feature(game_state: dict) -> int:
             )
             if neighbours_until_wall:
                 all_hot_fields += neighbours_until_wall
+                all_hot_fields += [bomb_pos]
 
         if len(all_hot_fields) > 0:
             for lava in all_hot_fields:
                 in_danger = own_position == lava
+                # if in_danger:
+                #     self.logger.debug(f'own {own_position}, lava {lava}')
                 if_dangerous.append(in_danger)
 
             return int(any(if_dangerous))
@@ -628,7 +631,7 @@ def state_to_features(self, game_state) -> np.array:
     }
 
     # Feature 1: if on hot field or not
-    state_dict["bomb_danger_zone"] = hot_field_feature(game_state=game_state)
+    state_dict["bomb_danger_zone"] = hot_field_feature(self, game_state=game_state)
 
     # Feature 2-5 ("Blockages")
     (
