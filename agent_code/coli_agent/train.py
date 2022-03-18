@@ -67,7 +67,7 @@ def setup_training(self):
     """Sets up training"""
     self.exploration_rate = self.exploration_rate_initial
     self.learning_rate = 0.5
-    self.discount_rate = 0.5
+    self.discount_rate = 0.2
 
     # (s, a, s', r)
     self.transitions = deque(maxlen=TRANSITION_HISTORY_SIZE)
