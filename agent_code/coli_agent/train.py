@@ -69,7 +69,7 @@ def setup_training(self):
     """Sets up training"""
     self.exploration_rate = self.exploration_rate_initial
     self.learning_rate = 0.5
-    self.discount_rate = 0.2
+    self.discount_rate = 0
 
     # (s, a, s', r)
     self.transitions = deque(maxlen=TRANSITION_HISTORY_SIZE)
@@ -250,7 +250,7 @@ def end_of_round(self, last_game_state, last_action, events):
     self.rewards_of_episodes.append(self.rewards_of_episode)
     self.game_scores_of_episodes.append(last_game_state["self"][1])
 
-    if self.episode % 9 == 0 and self.episode != 0:
+    if self.episode % 250 == 0 and self.episode != 0:
         self.logger.info(f"Saving Q-Table at episode: {self.episode}")
         np.save(os.path.join("q_tables", f"q_table-{self.timestamp}"), self.q_table)
 
