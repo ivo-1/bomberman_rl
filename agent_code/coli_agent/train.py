@@ -14,6 +14,7 @@ from agent_code.coli_agent.callbacks import (
     get_neighboring_tiles_until_wall,
     state_to_features,
 )
+from agent_code.coli_agent.plots import get_plots
 
 Transition = namedtuple("Transition", ("state", "action", "next_state", "reward"))
 
@@ -229,24 +230,39 @@ def end_of_round(self, last_game_state, last_action, events):
 
     self.logger.info(f"Total rewards in episode {self.episode}: {self.rewards_of_episode}")
     self.logger.info(f"Final Score: {last_game_state['self'][1]}")
-    self.rewards_of_episode = 0
 
-    if self.episode % 250 == 0 and self.episode != 0:
-        self.logger.info(f"Saving Q-Table at episode: {self.episode}")
-        np.save(f"q_table-{self.timestamp}", self.q_table)
-
-    self.episode += 1
     self.exploration_rate = self.exploration_rate_end + (
         self.exploration_rate_initial - self.exploration_rate_end
     ) * np.exp(
         -self.exploration_decay_rate * self.episode
     )  # decay
 
-    self.logger.info(f"Fraction of unseen states: {fraction_of_unseen_states(self.q_table)}")
-    self.logger.info(f"Average seen actions per state: {avg_seen_actions(self.q_table)}")
+    q_table_fraction_unseen_current = fraction_of_unseen_states(self.q_table)
+    q_table_average_seen_current = avg_seen_actions(self.q_table)
+    q_table_distribution_of_actions_current = distribution_of_best_actions(self.q_table)
+
+    self.logger.info(f"Fraction of unseen states: {q_table_fraction_unseen_current}")
+    self.logger.info(f"Average seen actions per state: {q_table_average_seen_current}")
     self.logger.info(
-        f"Distribution of actions over all states: {distribution_of_best_actions(self.q_table)}"
+        f"Distribution of actions over all states: {q_table_distribution_of_actions_current}"
     )
+    self.q_table_fraction_unseen.append(q_table_fraction_unseen_current)
+    self.q_table_average_seen.append(q_table_average_seen_current)
+
+    self.exploration_rates_of_episodes.append(self.exploration_rate)
+    self.rewards_of_episodes.append(self.rewards_of_episode)
+    self.game_scores_of_episodes.append(last_game_state["self"][1])
+
+    if self.episode % 250 == 0 and self.episode != 0:
+        self.logger.info(f"Saving Q-Table at episode: {self.episode}")
+        np.save(f"q_table-{self.timestamp}", self.q_table)
+
+        self.logger.info(f"Creating plots *after* episode {self.episode}...")
+        self.q_table_distribution_of_actions.append(q_table_distribution_of_actions_current)
+        get_plots(self)
+
+    self.rewards_of_episode = 0
+    self.episode += 1
 
 
 def reward_from_events(self, events: List[str]) -> int:
