@@ -232,10 +232,13 @@ def _get_graph(self, game_state, crates_as_obstacles=True) -> Graph:
         index for index, field in np.ndenumerate(game_state["explosion_map"]) if field != 0
     ]
 
+    bombs = [coordinate for coordinate, _ in game_state["bombs"]]
+
     # self.logger.debug(f"Active explosions: {active_explosions}")
     # print(f"Active explosion: {active_explosions}")
     # print(f"Bombs: {game_state['bombs']}")
     obstacles += active_explosions
+    obstacles += bombs
 
     self.logger.debug(f"Obstacles: {obstacles}")
 
