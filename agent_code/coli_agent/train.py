@@ -67,7 +67,7 @@ def setup_training(self):
     """Sets up training"""
     self.exploration_rate = self.exploration_rate_initial
     self.learning_rate = 0.5
-    self.discount_rate = 0
+    self.discount_rate = 0.5
 
     # (s, a, s', r)
     self.transitions = deque(maxlen=TRANSITION_HISTORY_SIZE)
@@ -167,7 +167,7 @@ def game_events_occurred(self, old_game_state, self_action: str, new_game_state,
     elif self.previous_distance >= self.current_distance:
         events.append(INCREASED_DISTANCE)
 
-    if new_feature_dict["coin_direction"] == self_action:
+    if old_feature_dict["coin_direction"] == self_action:
         events.append(FOLLOWED_DIRECTION)
     else:
         events.append(NOT_FOLLOWED_DIRECTION)
@@ -266,7 +266,7 @@ def reward_from_events(self, events: List[str]) -> int:
         # e.INVALID_ACTION: -10,
         # WAS_BLOCKED: -20,
         # MOVED: -0.1,
-        # PROGRESSED: 5,  # higher?
+        # PROGRESSED: 10,  # higher?
         # STAGNATED: -3,  # higher? lower?
         # FLED: 15,
         # SUICIDAL: -15,
@@ -276,8 +276,8 @@ def reward_from_events(self, events: List[str]) -> int:
         # DECREASED_SURROUNDING_CRATES: -1.6,
         # INCREASED_BOMB_DISTANCE: 5,
         # DECREASED_BOMB_DISTANCE: -5.1,
-        # FOLLOWED_DIRECTION: 1000,  # possibly create penalty
-        # NOT_FOLLOWED_DIRECTION: -1500,
+        FOLLOWED_DIRECTION: 5,  # possibly create penalty
+        NOT_FOLLOWED_DIRECTION: -6,
     }
 
     reward_sum = 0
