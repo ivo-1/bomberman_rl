@@ -224,6 +224,7 @@ def end_of_round(self, last_game_state, last_action, events):
     self.rewards_of_episode += self.transitions[-1][3]
 
     self.logger.info(f"Total rewards in episode {self.episode}: {self.rewards_of_episode}")
+    self.logger.info(f"Final Score: {last_game_state['self'][1]}")
     self.rewards_of_episode = 0
 
     if self.episode % 250 == 0 and self.episode != 0:

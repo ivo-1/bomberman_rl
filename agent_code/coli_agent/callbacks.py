@@ -233,7 +233,10 @@ def _get_graph(self, game_state, crates_as_obstacles=True) -> Graph:
     ]
 
     bombs = [
-        coordinate for coordinate, _ in game_state["bombs"] if coordinate != game_state["self"][-1]
+        coordinate
+        for coordinate, _ in game_state["bombs"]
+        if coordinate != game_state["self"][-1]
+        and coordinate not in [other_agent[-1] for other_agent in game_state["others"]]
     ]
 
     # self.logger.debug(f"Active explosions: {active_explosions}")
