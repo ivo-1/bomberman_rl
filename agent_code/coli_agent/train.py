@@ -164,7 +164,7 @@ def game_events_occurred(self, old_game_state, self_action: str, new_game_state,
 
     if self.previous_distance < self.current_distance:
         events.append(DECREASED_DISTANCE)
-    elif self.previous_distance >= self.current_distance:
+    elif self.previous_distance >= self.current_distance and not e.COIN_COLLECTED in events:
         events.append(INCREASED_DISTANCE)
 
     if old_feature_dict["coin_direction"] == self_action:
