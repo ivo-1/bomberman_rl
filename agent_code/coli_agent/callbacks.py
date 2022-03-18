@@ -93,17 +93,7 @@ def list_possible_states() -> np.array:
                                         states.append([a, b, c, d, e, f, g, h, i])
     state_dicts = []
     for vector in states:
-        state_dict = {
-            "bomb_danger_zone": vector[0],
-            "blocked_down": vector[1],
-            "blocked_up": vector[2],
-            "blocked_right": vector[3],
-            "blocked_left": vector[4],
-            "progressed": vector[5],
-            "coin_direction": vector[6],
-            "surrounding_crates": vector[7],
-            "enemy_danger_zone": vector[8],
-        }
+        state_dict = {}
         state_dicts.append(state_dict)
     return state_dicts
 
@@ -527,32 +517,6 @@ def _shortest_path_feature(self, game_state) -> Action:
             return np.random.choice(SHORTEST_PATH_ACTIONS)
 
 
-def hot_field_feature(self, game_state: dict) -> int:
-    own_position = game_state["self"][-1]
-    all_hot_fields, if_dangerous = [], []
-
-    if len(game_state["bombs"]) > 0:
-        for bomb in game_state["bombs"]:
-            bomb_pos = bomb[0]  # coordinates of bomb as type tuple
-            neighbours_until_wall = get_neighboring_tiles_until_wall(
-                bomb_pos, 3, game_state=game_state
-            )
-            if neighbours_until_wall:
-                all_hot_fields += neighbours_until_wall
-                all_hot_fields += [bomb_pos]
-
-        if len(all_hot_fields) > 0:
-            for lava in all_hot_fields:
-                in_danger = own_position == lava
-                # if in_danger:
-                #     self.logger.debug(f'own {own_position}, lava {lava}')
-                if_dangerous.append(in_danger)
-
-            return int(any(if_dangerous))
-    else:
-        return 0
-
-
 def blockage_feature(game_state: dict) -> List[int]:
     own_position = game_state["self"][-1]
     enemy_positions = [enemy[-1] for enemy in game_state["others"]]
@@ -580,56 +544,6 @@ def blockage_feature(game_state: dict) -> List[int]:
         ):
             results[i] = 1
     return results
-
-
-def progression_feature(self) -> int:
-    num_visited_tiles = len(self.history)  # history contains agent coords of last 5 turns
-    if num_visited_tiles > 1:  # otherwise the feature is and is supposed to be 0 anyway
-        num_unique_visited_tiles = len(set(self.history))
-        # of 5 tiles, 3 should be new -> 60%. for start of the episode: 2 out of 2, 2 out of 3, 3 out of 4
-        return 1 if (num_unique_visited_tiles / num_visited_tiles) >= 0.6 else 0
-    return 0
-
-
-def surrounding_crates_feature(game_state: dict) -> int:
-    own_position = game_state["self"][-1]
-    neighbours = get_neighboring_tiles_until_wall(own_position, 3, game_state=game_state)
-    crate_coordinates = []
-
-    if neighbours:
-        for coord in neighbours:
-            if game_state["field"][coord[0]][coord[1]] == 1:
-                crate_coordinates += [coord]
-
-        if len(crate_coordinates) == 0:
-            return 0
-        elif 1 <= len(crate_coordinates) < 4:
-            return 1
-        elif len(crate_coordinates) >= 4:
-            return 2
-
-    return 0
-
-
-def enemy_zone_feature(game_state: dict) -> int:
-    own_position = game_state["self"][-1]
-    all_enemy_fields = []
-    if_dangerous = []
-    for enemy in game_state["others"]:
-        neighbours_until_wall = get_neighboring_tiles_until_wall(
-            enemy[-1], 3, game_state=game_state
-        )
-        if neighbours_until_wall:
-            all_enemy_fields += neighbours_until_wall
-
-    if len(all_enemy_fields) > 0:
-        for bad_field in all_enemy_fields:
-            in_danger = own_position == bad_field
-            if_dangerous.append(in_danger)
-
-        return int(any(if_dangerous))
-    else:
-        return 0
 
 
 def state_to_features(self, game_state) -> np.array:
