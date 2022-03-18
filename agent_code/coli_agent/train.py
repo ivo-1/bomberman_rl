@@ -98,7 +98,11 @@ def game_events_occurred(self, old_game_state, self_action: str, new_game_state,
 
     if old_feature_dict["bomb_danger_zone"] == 1 and new_feature_dict["bomb_danger_zone"] == 0:
         events.append(FLED)
-    elif old_feature_dict["bomb_danger_zone"] == 0 and new_feature_dict["bomb_danger_zone"] == 1:
+    elif (
+        old_feature_dict["bomb_danger_zone"] == 0
+        and new_feature_dict["bomb_danger_zone"] == 1
+        and not e.BOMB_DROPPED in events
+    ):
         events.append(SUICIDAL)
 
     if new_feature_dict["progressed"] == 1 and not e.INVALID_ACTION in events:
