@@ -1,3 +1,4 @@
+import os
 from collections import deque, namedtuple
 from statistics import (
     avg_seen_actions,
@@ -183,7 +184,7 @@ def end_of_round(self, last_game_state, last_action, events):
 
     if self.episode % 250 == 0 and self.episode != 0:
         self.logger.info(f"Saving Q-Table at episode: {self.episode}")
-        np.save(f"q_table-{self.timestamp}", self.q_table)
+        np.save(os.path.join("q_tables", f"q_table-{self.timestamp}"), self.q_table)
 
         self.logger.info(f"Creating plots *after* episode {self.episode}...")
         self.q_table_distribution_of_actions.append(q_table_distribution_of_actions_current)
