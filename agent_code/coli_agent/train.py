@@ -23,18 +23,8 @@ TRANSITION_HISTORY_SIZE = 3  # keep only ... last transitions
 
 # --- Custom Events ---
 
-WAS_BLOCKED = "WAS_BLOCKED"  # tried to move into a wall/crate/enemy/explosion (strong penalty)
-MOVED = "MOVED"  # moved somewhere (and wasn't blocked)
-
 FOLLOWED_DIRECTION = "FOLLOWED_DIRECTION"  # went in direction indicated by coin/crate feature
 NOT_FOLLOWED_DIRECTION = "NOT_FOLLOWED_DIRECTION"
-
-INCREASED_SURROUNDING_CRATES = (
-    "INCREASED_SURROUNDING_CRATES"  # increased or stayed the same; low reward
-)
-DECREASED_SURROUNDING_CRATES = (
-    "DECREASED_SURROUNDING_CRATES"  # equal or slightly higher penalty for balance
-)
 
 
 def setup_training(self):
@@ -69,37 +59,6 @@ def game_events_occurred(self, old_game_state, self_action: str, new_game_state,
     new_feature_dict = self.state_list[new_state]
 
     # Custom events and stuff
-
-    if new_game_state["self"][-1] != old_game_state["self"][-1]:
-        events.append(MOVED)
-
-    if old_feature_dict["blocked_down"] == 1 and self_action == "DOWN":
-        events.append(WAS_BLOCKED)
-    elif old_feature_dict["blocked_up"] == 1 and self_action == "UP":
-        events.append(WAS_BLOCKED)
-    elif old_feature_dict["blocked_right"] == 1 and self_action == "RIGHT":
-        events.append(WAS_BLOCKED)
-    elif old_feature_dict["blocked_down"] == 1 and self_action == "LEFT":
-        events.append(WAS_BLOCKED)
-
-    old_neighbors = get_neighboring_tiles_until_wall(
-        old_game_state["self"][-1], 3, game_state=old_game_state
-    )
-    new_neighbors = get_neighboring_tiles_until_wall(
-        new_game_state["self"][-1], 3, game_state=new_game_state
-    )
-
-    crate_counter = [0, 0]  # [old, new]
-    for tile in old_neighbors:
-        if old_game_state["field"][tile[0]][tile[1]] == 1:
-            crate_counter[0] += 1
-    for tile in new_neighbors:
-        if new_game_state["field"][tile[0]][tile[1]] == 1:
-            crate_counter[1] += 1
-    if crate_counter[0] < crate_counter[1]:
-        events.append(INCREASED_SURROUNDING_CRATES)
-    elif crate_counter[0] > crate_counter[1]:
-        events.append(DECREASED_SURROUNDING_CRATES)
 
     if old_feature_dict["coin_direction"] == self_action:
         events.append(FOLLOWED_DIRECTION)
@@ -212,10 +171,6 @@ def reward_from_events(self, events: List[str]) -> int:
         e.OPPONENT_ELIMINATED: 0.05,
         e.SURVIVED_ROUND: 0,
         e.INVALID_ACTION: -10,
-        WAS_BLOCKED: -20,
-        MOVED: -0.1,
-        INCREASED_SURROUNDING_CRATES: 1.5,
-        DECREASED_SURROUNDING_CRATES: -1.6,
         FOLLOWED_DIRECTION: 2,  # possibly create penalty
         NOT_FOLLOWED_DIRECTION: -4,
     }

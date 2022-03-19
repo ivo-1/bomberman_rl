@@ -1,4 +1,5 @@
 import glob
+import itertools
 import os
 from collections import deque
 from datetime import datetime
@@ -6,6 +7,7 @@ from typing import List, Tuple
 
 import networkx as nx
 import numpy as np
+from sklearn import neighbors
 from sympy import exp, solve, symbols
 
 from settings import COLS, ROWS
@@ -39,7 +41,9 @@ def setup(self):
     self.game_scores_of_episodes = []
 
     # find latest q_table
-    list_of_q_tables = glob.glob("*.npy")  # * means all if need specific format then *.csv
+    list_of_q_tables = glob.glob(
+        "./q_tables/*.npy"
+    )  # * means all if need specific format then *.csv
     self.latest_q_table_path = max(list_of_q_tables, key=os.path.getctime)
     # self.latest_q_table_path = "q_table-2022-03-14T162802-node45.npy"
     self.latest_q_table = np.load(self.latest_q_table_path)
@@ -50,7 +54,7 @@ def setup(self):
     if self.train or not os.path.isfile(self.latest_q_table_path):
         self.logger.info("Setting up Q-Learning algorithm")
         self.timestamp = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
-        self.number_of_states = 1536  # TODO: make this dynamic
+        self.number_of_states = 240  # TODO: make this dynamic
 
         self.exploration_rate_initial = 1.0
         self.exploration_rate_end = 0.05  # at end of all episodes
@@ -73,28 +77,45 @@ def setup(self):
 
 
 def list_possible_states() -> np.array:
-    states = []
-    binary = range(2)
-    # TODO it has to be possible to do this in a less horrible way somehow
-    for a in binary:  # in bomb danger zone?
-        for b in binary:  # blocked DOWN?
-            for c in binary:  # blocked UP?
-                for d in binary:  # blocked RIGHT?
-                    for e in binary:  # blocked LEFT?
-                        for f in binary:  # progressed?
-                            for g in [
-                                "DOWN",
-                                "UP",
-                                "RIGHT",
-                                "LEFT",
-                            ]:  # direction of nearest coin (or crate)
-                                for h in range(3):  # amount of surrounding crates (none, low, high)
-                                    for i in binary:  # in opponents bomb area?
-                                        states.append([a, b, c, d, e, f, g, h, i])
+    states = list(
+        itertools.product(
+            (
+                "DOWN",
+                "UP",
+                "RIGHT",
+                "LEFT",
+            ),  # coin direction  - kind of a "fall back" when there's nothing else to do
+            (
+                "CLEAR",
+                "DOWN",
+                "UP",
+                "RIGHT",
+                "LEFT",
+            ),  # bomb safety direction  - highest priority in rewards
+            (0, 1),  # in enemy zone
+            (
+                0,
+                1,
+            ),  # is it safe to drop a bomb? - if in enemy zone and safe to bomb ... if many crates and safe to bomb ...
+            (
+                "ZERO",
+                "FEW",
+                "MANY",
+            )  # how many surrounding crates are there (and how close are they?) - high bomb dropping reward when this is high
+            # enemy trapped, self trapped/quagmire, which actions are possible, enemy attack + flight directions, attack or flee?, mode agent/coin ratio, coin path long or short, safe to go direction
+        )
+    )
     state_dicts = []
     for vector in states:
-        state_dict = {}
+        state_dict = {
+            "coin_direction": vector[0],
+            "bomb_safe_direction": vector[1],
+            "in_enemy_zone": vector[2],
+            "safe_to_bomb": vector[3],
+            "surrounding_crates": vector[4],
+        }
         state_dicts.append(state_dict)
+    print(state_dicts[0])
     return state_dicts
 
 
@@ -125,7 +146,6 @@ def act(self, game_state: dict) -> str:
     self.logger.info("Exploiting")
     # TODO: Do we want to go 100% exploitation once we have learnt the q-table?
     # Alternative is to sample from the learnt q_table distribution.
-    # print(state)
     self.logger.debug(f"State: {state}")
     action = ACTIONS[np.argmax(self.q_table[state])]
     self.logger.info(f"Action chosen: {action}")
@@ -517,78 +537,143 @@ def _shortest_path_feature(self, game_state) -> Action:
             return np.random.choice(SHORTEST_PATH_ACTIONS)
 
 
-def blockage_feature(game_state: dict) -> List[int]:
+def enemy_zone_feature(game_state: dict) -> int:
     own_position = game_state["self"][-1]
-    enemy_positions = [enemy[-1] for enemy in game_state["others"]]
-    results = [0, 0, 0, 0]
-
-    for i, neighboring_coord in enumerate(_get_neighboring_tiles(own_position, 1)):
-        neighboring_x, neighboring_y = neighboring_coord
-        neighboring_content = game_state["field"][neighboring_x][
-            neighboring_y
-        ]  # content of tile, e.g. crate=1
-        explosion = (
-            True if game_state["explosion_map"][neighboring_x][neighboring_y] != 0 else False
+    all_enemy_fields = []
+    if_dangerous = []
+    for enemy in game_state["others"]:
+        neighbours_until_wall = get_neighboring_tiles_until_wall(
+            enemy[-1], 3, game_state=game_state
         )
-        ripe_bomb = False  # "ripe" = about to explode
-        if (neighboring_coord, 0) in game_state["bombs"] or (
-            neighboring_coord,
-            1,
-        ) in game_state["bombs"]:
-            ripe_bomb = True
-        if (
-            neighboring_content != 0
-            or neighboring_coord in enemy_positions
-            or explosion
-            or ripe_bomb
-        ):
-            results[i] = 1
-    return results
+        if neighbours_until_wall:
+            all_enemy_fields += neighbours_until_wall
+
+    if len(all_enemy_fields) > 0:
+        for bad_field in all_enemy_fields:
+            in_danger = own_position == bad_field
+            if_dangerous.append(in_danger)
+
+        return int(any(if_dangerous))
+    else:
+        return 0
+
+
+def surrounding_crates_feature(game_state: dict) -> int:
+    own_position = game_state["self"][-1]
+    neighbours = get_neighboring_tiles_until_wall(own_position, 3, game_state=game_state)
+    crate_coordinates = []
+
+    if neighbours:
+        for coord in neighbours:
+            if game_state["field"][coord[0]][coord[1]] == 1:
+                crate_coordinates += [coord]
+
+        if len(crate_coordinates) == 0:
+            return 0
+        elif 1 <= len(crate_coordinates) < 4:
+            return 1
+        elif len(crate_coordinates) >= 4:
+            return 2
+
+    return 0
+
+
+def bomb_safety_direction_feature(self, game_state):
+    """
+    Issues with this feature:
+    * shortest path is in this case not necessarily best path
+    * shortest path might change frequently because enemy is moving away -> leads to moving back and forth
+    """
+    own_position = game_state["self"][-1]
+    relevant_neighbors = get_neighboring_tiles_until_wall(own_position, 3, game_state)
+    bomb_positions = [bomb[0] for bomb in game_state["bombs"]]
+    self.logger.debug(f"Bomb positions: {bomb_positions}")
+
+    if not any(
+        [neighbor in bomb_positions for neighbor in relevant_neighbors]
+    ):  # agent is not in any future explosion zone of bomb
+        return "CLEAR"
+
+    bomb_explosion_tiles = []
+    reach = 4  # how far we can still go before most urgent bomb blows up
+    for bomb in game_state["bombs"]:
+        bomb_explostion_tiles += get_neighboring_tiles_until_wall(bomb[0], 3, game_state)
+        if bomb[1] + 1 < reach:
+            reach = bomb[1] + 1
+    self.logger.debug(f"Reach: {reach}")
+    graph = _get_graph(self, game_state)
+    available_neighbors = _get_neighboring_tiles(own_position, reach)
+
+    shortest_path = None
+    shortest_distance = 1000
+    for n in available_neighbors:
+        if n not in graph or n in bomb_explosion_tiles:
+            self.logger.debug(f"Skipping tile {n} as not available for bomb flight")
+            continue
+        try:
+            current_shortest_path, current_shortest_distance = _find_shortest_path(
+                graph, own_position, n
+            )
+            if current_shortest_distance < shortest_distance:
+                shortest_path = current_shortest_path
+                shortest_distance = current_shortest_distance
+        except nx.exception.NetworkXNoPath:
+            continue
+
+    self.logger.debug(f"Bomb safety goal: {shortest_path[1]}")  # ?
+
+    if not shortest_path:
+        return "NO_WAY_OUT"
+
+    return _get_action(self, own_position, shortest_path)
+
+
+def safe_to_bomb_feature(self, game_state) -> int:
+    if not game_state["self"][2]:
+        return 0
+    # return 0 if there would be no path away from bomb if bomb was in place of own coord
+    return 1
 
 
 def state_to_features(self, game_state) -> np.array:
     """Parses game state to features"""
 
     state_dict = {
-        "bomb_danger_zone": None,
-        "blocked_down": None,
-        "blocked_up": None,
-        "blocked_right": None,
-        "blocked_left": None,
-        "progressed": None,
         "coin_direction": None,
+        "bomb_safe_direction": None,
+        "in_enemy_zone": None,
+        "safe_to_bomb": None,
         "surrounding_crates": None,
-        "enemy_danger_zone": None,
     }
 
-    # Feature 1: if on hot field or not
-    state_dict["bomb_danger_zone"] = hot_field_feature(self, game_state=game_state)
-
-    # Feature 2-5 ("Blockages")
-    (
-        state_dict["blocked_down"],
-        state_dict["blocked_up"],
-        state_dict["blocked_right"],
-        state_dict["blocked_left"],
-    ) = blockage_feature(game_state=game_state)
-
-    # Feature 6 ("Going to new tiles")
-    state_dict["progressed"] = progression_feature(self)
-
-    # Feature 7: Next direction in shortest path to coin or crate
+    # Feature 1: Next direction in shortest path to nearest coin or crate
     direction = _shortest_path_feature(self, game_state)
-    # same order as features 2-5
     if direction in ["DOWN", "UP", "RIGHT", "LEFT"]:
         state_dict["coin_direction"] = direction
     else:
-        self.logger.debug(f"Shortest path feature produced invalid return: {direction}")
-        raise ValueError("Invalid directon to nearest coin/crate")
+        raise ValueError(f"Invalid directon to nearest coin/crate: {direction}")
 
-    # Feature 8: amount of crates within destruction reach: small: 0, medium: 1<4, high: >= 4
-    state_dict["surrounding_crates"] = surrounding_crates_feature(game_state=game_state)
+    # Feature 2: Next direction in path to bomb safety zone, or "CLEAR" if not in bomb zone
+    bomb_safety_result = bomb_safety_direction_feature(self, game_state)
+    if bomb_safety_result in ["DOWN", "UP", "RIGHT", "LEFT", "CLEAR"]:
+        state_dict["coin_direction"] = bomb_safety_result
+    elif bomb_safety_result == "NO_WAY_OUT":
+        state_dict["coin_direction"] = np.random.choice([SHORTEST_PATH_ACTIONS])
+    else:
+        raise ValueError(f"Invalid directon to bomb safety: {bomb_safety_result}")
 
-    # Feature 9: if in opponents area
+    # Feature 3: Is agent within bombing reach of other agent?
     state_dict["enemy_danger_zone"] = enemy_zone_feature(game_state=game_state)
+
+    # Feature 4: Is it safe to plant a bomb?
+    answer = safe_to_bomb_feature(self, game_state)
+    if answer:
+        state_dict["safe_to_bomb"] = answer
+    else:
+        raise ValueError("'Safe to bomb' is None")
+
+    # Feature 8: amount of crates within destruction reach: ZERO, FEW or MANY
+    state_dict["surrounding_crates"] = surrounding_crates_feature(game_state=game_state)
 
     self.logger.info(f"Feature dict: {state_dict}")
 
@@ -596,7 +681,10 @@ def state_to_features(self, game_state) -> np.array:
         if state == state_dict:
             return i
 
-    raise ReferenceError("State dict created by state_to_features was not found in self.state_list")
+    raise ReferenceError(
+        f"State dict created by state_to_features was not found in self.state_list.\n\
+        State attempted to find: {state}"
+    )
 
 
 # Only to demonstrate test
