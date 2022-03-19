@@ -46,7 +46,7 @@ def setup(self):
         "./q_tables/*.npy"
     )  # * means all if need specific format then *.csv
     self.latest_q_table_path = max(list_of_q_tables, key=os.path.getctime)
-    # self.latest_q_table_path = "/home/aileen/heiBOX/2021_22 WS/FML/final_project/bomberman_rl/agent_code/coli_agent/q_tables/q_table-2022-03-19T14:27:32.npy"
+    # self.latest_q_table_path = "/Users/ivo/Studium/fml/bomberman_rl/agent_code/coli_agent/q_tables/q_table-2022-03-19T18:24:04.npy"
     self.latest_q_table = np.load(self.latest_q_table_path)
 
     self.logger.info(f"Using q-table: {self.latest_q_table_path}")
@@ -156,11 +156,22 @@ def act(self, game_state: dict) -> str:
         return action
 
     self.logger.info("Exploiting")
-    # TODO: Do we want to go 100% exploitation once we have learnt the q-table?
-    # Alternative is to sample from the learnt q_table distribution.
     self.logger.debug(f"State: {state}")
-    action = ACTIONS[np.argmax(self.q_table[state])]
-    # TODO: sample: add lowest negative value to all values, then divide all values by sum, then use that as p
+
+    # 100% exploitation once we have learnt the q-table/exploit in training
+    # action = ACTIONS[np.argmax(self.q_table[state])]
+
+    # Alternative: sample from the learnt q_table distribution.
+    if not np.any(self.q_table[state]):
+        self.logger.debug("Q-Table has all zeros --> choosing random action")
+        action = np.random.choice(ACTIONS)
+    else:
+        self.logger.debug("Sampling action from Q-Table")
+        lowest_q_value_of_state = np.min(self.q_table[state])
+        non_negative_q_table = self.q_table[state] + abs(lowest_q_value_of_state)
+        probabilities = [(q_value / sum(non_negative_q_table)) for q_value in non_negative_q_table]
+        action = np.random.choice(ACTIONS, p=probabilities)
+
     self.logger.info(f"Action chosen: {action}")
     return action
 
