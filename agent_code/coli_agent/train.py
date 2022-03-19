@@ -10,11 +10,7 @@ from typing import List
 import numpy as np
 
 import events as e
-from agent_code.coli_agent.callbacks import (
-    ACTIONS,
-    get_neighboring_tiles_until_wall,
-    state_to_features,
-)
+from agent_code.coli_agent.callbacks import ACTIONS, state_to_features
 from agent_code.coli_agent.plots import get_plots
 
 Transition = namedtuple("Transition", ("state", "action", "next_state", "reward"))
@@ -23,15 +19,33 @@ TRANSITION_HISTORY_SIZE = 3  # keep only ... last transitions
 
 # --- Custom Events ---
 
-FOLLOWED_DIRECTION = "FOLLOWED_DIRECTION"  # went in direction indicated by coin/crate feature
-NOT_FOLLOWED_DIRECTION = "NOT_FOLLOWED_DIRECTION"
+FOLLOWED_COIN_DIRECTION = (
+    "FOLLOWED_COIN_DIRECTION"  # went in direction indicated by coin/crate feature
+)
+NOT_FOLLOWED_COIN_DIRECTION = "NOT_FOLLOWED_COIN_DIRECTION"
+
+FOLLOWED_BOMB_DIRECTION = "FOLLOWED_BOMB_DIRECTION"  # went in direction indicated by bomb feature
+NOT_FOLLOWED_BOMB_DIRECTION = "NOT_FOLLOWED_BOMB_DIRECTION"
+
+DROPPED_BAD_BOMB = (
+    "DROPPED_BAD_BOMB"  # tried to drop bomb when impossible or dropped bomb when dangerous
+)
+DROPPED_UNNECESSARY_BOMB = (
+    "DROPPED_UNNECESSARY_BOMB"  # drop bomb when there weren't any crates or enemies
+)
+
+TARGETED_MANY_CRATES = "TARGETED_MANY_CRATES"
+TARGETED_SOME_CRATES = "TARGETED_SOME_CRATES"
+TARGETED_ENEMY = "TARGETED_ENEMY"
+
+BLOCKED = "BLOCKED"
 
 
 def setup_training(self):
     """Sets up training"""
     self.exploration_rate = self.exploration_rate_initial
     self.learning_rate = 0.5
-    self.discount_rate = 0
+    self.discount_rate = 0.2
 
     # (s, a, s', r)
     self.transitions = deque(maxlen=TRANSITION_HISTORY_SIZE)
@@ -56,14 +70,46 @@ def game_events_occurred(self, old_game_state, self_action: str, new_game_state,
     new_state = self.new_state
 
     old_feature_dict = self.state_list[old_state]
-    new_feature_dict = self.state_list[new_state]
 
     # Custom events and stuff
 
-    if old_feature_dict["coin_direction"] == self_action:
-        events.append(FOLLOWED_DIRECTION)
-    else:
-        events.append(NOT_FOLLOWED_DIRECTION)
+    if (
+        old_feature_dict["bomb_safety_direction"] == "CLEAR"
+        and old_feature_dict["in_enemy_zone"] == 0
+    ):
+        if old_feature_dict["coin_direction"] == self_action:
+            events.append(FOLLOWED_COIN_DIRECTION)
+        else:
+            events.append(NOT_FOLLOWED_COIN_DIRECTION)
+
+    if old_feature_dict["bomb_safety_direction"] != "CLEAR":
+        if self_action == old_feature_dict["bomb_safety_direction"]:
+            events.append(FOLLOWED_BOMB_DIRECTION)
+        else:
+            events.append(NOT_FOLLOWED_BOMB_DIRECTION)
+
+    if old_feature_dict["safe_to_bomb"] == 0 and self_action == "BOMB":
+        events.append(DROPPED_BAD_BOMB)
+
+    if old_feature_dict["safe_to_bomb"] == 1:
+        if self_action == "BOMB":
+            if old_feature_dict["crate_priority"] == "HIGH":
+                events.append(TARGETED_MANY_CRATES)
+            elif old_feature_dict["crate_priority"] == "LOW":
+                events.append(TARGETED_SOME_CRATES)
+            elif old_feature_dict["in_enemy_zone"] == 1:
+                events.append(TARGETED_ENEMY)
+            else:
+                events.append(DROPPED_UNNECESSARY_BOMB)
+
+    if old_feature_dict["up"] == "BLOCKED" and self_action == "UP":
+        events.append(BLOCKED)
+    elif old_feature_dict["down"] == "BLOCKED" and self_action == "DOWN":
+        events.append(BLOCKED)
+    elif old_feature_dict["right"] == "BLOCKED" and self_action == "RIGHT":
+        events.append(BLOCKED)
+    elif old_feature_dict["left"] == "BLOCKED" and self_action == "LEFT":
+        events.append(BLOCKED)
 
     self.logger.debug(f'Old coords: {old_game_state["self"][3]}')
     self.logger.debug(f'New coords: {new_game_state["self"][3]}')
@@ -153,6 +199,16 @@ def end_of_round(self, last_game_state, last_action, events):
     self.episode += 1
 
 
+# training plan
+# 1: don't move into blocked (solo coin heaven without coin reward nor bomb rewards)
+# 2: don't blow self up (solo coin heaven with bomb rewards)
+# 3: blow crates up (solo classic w/o coin rewards)
+# 4: collect coins (back to coin heaven solo with bomb and coin and bomb rewards) (maybe just coin)
+# 5: combine coins + crates (solo classic with coin and bomb rewards)
+# 6: introduce enemies (coin heaven)
+# 7: combine all (classic)
+
+
 def reward_from_events(self, events: List[str]) -> int:
     """
     Returns a summed up reward/penalty for a given list of events that happened.
@@ -161,18 +217,30 @@ def reward_from_events(self, events: List[str]) -> int:
     game_rewards = {
         e.BOMB_DROPPED: 10,
         e.BOMB_EXPLODED: 0,
-        e.COIN_COLLECTED: 50,
-        e.COIN_FOUND: 5,
-        e.WAITED: -3,
-        e.CRATE_DESTROYED: 4,
-        e.GOT_KILLED: -50,
-        e.KILLED_OPPONENT: 200,
-        e.KILLED_SELF: -10,  # this *also* triggers GOT_KILLED
-        e.OPPONENT_ELIMINATED: 0.05,
+        e.COIN_COLLECTED: 0,
+        e.COIN_FOUND: 0,
+        e.WAITED: 0,
+        e.CRATE_DESTROYED: 0,
+        e.GOT_KILLED: 0,
+        e.KILLED_OPPONENT: 0,
+        e.KILLED_SELF: 0,  # this *also* triggers GOT_KILLED
+        e.OPPONENT_ELIMINATED: 0,
         e.SURVIVED_ROUND: 0,
-        e.INVALID_ACTION: -10,
-        FOLLOWED_DIRECTION: 2,  # possibly create penalty
-        NOT_FOLLOWED_DIRECTION: -4,
+        e.INVALID_ACTION: 0,
+        # FOLLOWED_COIN_DIRECTION: 5,
+        # NOT_FOLLOWED_COIN_DIRECTION: -10,
+        FOLLOWED_BOMB_DIRECTION: 25,
+        NOT_FOLLOWED_BOMB_DIRECTION: -50,
+        DROPPED_BAD_BOMB: -100,
+        DROPPED_UNNECESSARY_BOMB: -100,
+        TARGETED_MANY_CRATES: 50,
+        TARGETED_SOME_CRATES: 10,
+        # TARGETED_ENEMY: 30,
+        BLOCKED: -100,
+        # e.MOVED_DOWN: 25,
+        # e.MOVED_LEFT: 25,
+        # e.MOVED_RIGHT: 25,
+        # e.MOVED_UP: 25
     }
 
     reward_sum = 0

@@ -1,13 +1,14 @@
 import glob
 import itertools
 import os
+import random
 from collections import deque
+from copy import deepcopy
 from datetime import datetime
 from typing import List, Tuple
 
 import networkx as nx
 import numpy as np
-from sklearn import neighbors
 from sympy import exp, solve, symbols
 
 from settings import COLS, ROWS
@@ -45,7 +46,7 @@ def setup(self):
         "./q_tables/*.npy"
     )  # * means all if need specific format then *.csv
     self.latest_q_table_path = max(list_of_q_tables, key=os.path.getctime)
-    # self.latest_q_table_path = "q_table-2022-03-14T162802-node45.npy"
+    # self.latest_q_table_path = "/home/aileen/heiBOX/2021_22 WS/FML/final_project/bomberman_rl/agent_code/coli_agent/q_tables/q_table-2022-03-19T14:27:32.npy"
     self.latest_q_table = np.load(self.latest_q_table_path)
 
     self.logger.info(f"Using q-table: {self.latest_q_table_path}")
@@ -54,7 +55,7 @@ def setup(self):
     if self.train or not os.path.isfile(self.latest_q_table_path):
         self.logger.info("Setting up Q-Learning algorithm")
         self.timestamp = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
-        self.number_of_states = 240  # TODO: make this dynamic
+        self.number_of_states = 3840  # TODO: make this dynamic
 
         self.exploration_rate_initial = 1.0
         self.exploration_rate_end = 0.05  # at end of all episodes
@@ -77,6 +78,11 @@ def setup(self):
 
 
 def list_possible_states() -> np.array:
+    """
+    ideas:
+    enemy trapped, self trapped/quagmire, enemy attack + flight directions,
+    attack or flee?, mode agent/coin ratio, coin path long or short, safe to go direction
+    """
     states = list(
         itertools.product(
             (
@@ -99,23 +105,29 @@ def list_possible_states() -> np.array:
             ),  # is it safe to drop a bomb? - if in enemy zone and safe to bomb ... if many crates and safe to bomb ...
             (
                 "ZERO",
-                "FEW",
-                "MANY",
-            )  # how many surrounding crates are there (and how close are they?) - high bomb dropping reward when this is high
-            # enemy trapped, self trapped/quagmire, which actions are possible, enemy attack + flight directions, attack or flee?, mode agent/coin ratio, coin path long or short, safe to go direction
+                "LOW",
+                "HIGH",
+            ),  # how many surrounding crates are there (and how close are they?) - high bomb dropping reward when this is high
+            ("FREE", "BLOCKED"),  # is the next tile in the four directions free to move to
+            ("FREE", "BLOCKED"),
+            ("FREE", "BLOCKED"),
+            ("FREE", "BLOCKED"),
         )
     )
     state_dicts = []
     for vector in states:
         state_dict = {
             "coin_direction": vector[0],
-            "bomb_safe_direction": vector[1],
+            "bomb_safety_direction": vector[1],
             "in_enemy_zone": vector[2],
             "safe_to_bomb": vector[3],
-            "surrounding_crates": vector[4],
+            "crate_priority": vector[4],
+            "down": vector[5],
+            "up": vector[6],
+            "right": vector[7],
+            "left": vector[8],
         }
         state_dicts.append(state_dict)
-    print(state_dicts[0])
     return state_dicts
 
 
@@ -148,6 +160,7 @@ def act(self, game_state: dict) -> str:
     # Alternative is to sample from the learnt q_table distribution.
     self.logger.debug(f"State: {state}")
     action = ACTIONS[np.argmax(self.q_table[state])]
+    # TODO: sample: add lowest negative value to all values, then divide all values by sum, then use that as p
     self.logger.info(f"Action chosen: {action}")
     return action
 
@@ -163,6 +176,19 @@ def _determine_exploration_decay_rate(self) -> float:
     solution = solve(expr, x)[0]
     self.logger.info(f"Determined exploration decay rate: {solution}")
     return float(solution)
+
+
+def _get_surrounding_tiles(own_coord, n) -> List[Coordinate]:
+    own_coord_x = own_coord[0]
+    own_coord_y = own_coord[1]
+    neighboring_coordinates = []
+    for x in range(0, n + 1):  # x = 2
+        for y in range(0, n + 1 - x):
+            neighboring_coordinates.append((own_coord_x + x, own_coord_y + y))
+            neighboring_coordinates.append((own_coord_x + x, own_coord_y - y))
+            neighboring_coordinates.append((own_coord_x - x, own_coord_y + y))
+            neighboring_coordinates.append((own_coord_x - x, own_coord_y - y))
+    return list(set(neighboring_coordinates))
 
 
 def _get_neighboring_tiles(own_coord, n) -> List[Coordinate]:
@@ -219,7 +245,6 @@ def get_neighboring_tiles_until_wall(own_coord, n, game_state) -> List[Coordinat
                     else:
                         break
             except IndexError:
-                # print("Border")
                 break
 
         all_good_fields += good_fields
@@ -558,27 +583,29 @@ def enemy_zone_feature(game_state: dict) -> int:
         return 0
 
 
-def surrounding_crates_feature(game_state: dict) -> int:
+def crate_priority_feature(game_state: dict) -> str:
     own_position = game_state["self"][-1]
     neighbours = get_neighboring_tiles_until_wall(own_position, 3, game_state=game_state)
-    crate_coordinates = []
 
-    if neighbours:
-        for coord in neighbours:
-            if game_state["field"][coord[0]][coord[1]] == 1:
-                crate_coordinates += [coord]
+    crate_counter = 0
+    for coord in neighbours:
+        if game_state["field"][coord[0]][coord[1]] == 1:
+            crate_counter += 1
+            # crates directly next to own position are weighted
+            if own_position[0] == coord[0] + 1 or own_position[0] == coord[0] - 1:
+                crate_counter += 2.5
+            elif own_position[1] == coord[1] + 1 or own_position[1] == coord[1] - 1:
+                crate_counter += 2.5
 
-        if len(crate_coordinates) == 0:
-            return 0
-        elif 1 <= len(crate_coordinates) < 4:
-            return 1
-        elif len(crate_coordinates) >= 4:
-            return 2
-
-    return 0
+    if crate_counter == 0:
+        return "ZERO"
+    elif 1 <= crate_counter < 4:
+        return "LOW"
+    elif crate_counter >= 4:
+        return "HIGH"
 
 
-def bomb_safety_direction_feature(self, game_state):
+def bomb_safety_direction_feature(self, game_state) -> Action:
     """
     Issues with this feature:
     * shortest path is in this case not necessarily best path
@@ -586,6 +613,7 @@ def bomb_safety_direction_feature(self, game_state):
     """
     own_position = game_state["self"][-1]
     relevant_neighbors = get_neighboring_tiles_until_wall(own_position, 3, game_state)
+    relevant_neighbors.append(own_position)
     bomb_positions = [bomb[0] for bomb in game_state["bombs"]]
     self.logger.debug(f"Bomb positions: {bomb_positions}")
 
@@ -594,21 +622,20 @@ def bomb_safety_direction_feature(self, game_state):
     ):  # agent is not in any future explosion zone of bomb
         return "CLEAR"
 
-    bomb_explosion_tiles = []
+    bomb_explosion_tiles = [own_position]
     reach = 4  # how far we can still go before most urgent bomb blows up
     for bomb in game_state["bombs"]:
-        bomb_explostion_tiles += get_neighboring_tiles_until_wall(bomb[0], 3, game_state)
+        bomb_explosion_tiles += get_neighboring_tiles_until_wall(bomb[0], 3, game_state)
         if bomb[1] + 1 < reach:
             reach = bomb[1] + 1
     self.logger.debug(f"Reach: {reach}")
     graph = _get_graph(self, game_state)
-    available_neighbors = _get_neighboring_tiles(own_position, reach)
+    available_neighbors = _get_surrounding_tiles(own_position, reach)
 
     shortest_path = None
     shortest_distance = 1000
     for n in available_neighbors:
         if n not in graph or n in bomb_explosion_tiles:
-            self.logger.debug(f"Skipping tile {n} as not available for bomb flight")
             continue
         try:
             current_shortest_path, current_shortest_distance = _find_shortest_path(
@@ -620,31 +647,65 @@ def bomb_safety_direction_feature(self, game_state):
         except nx.exception.NetworkXNoPath:
             continue
 
-    self.logger.debug(f"Bomb safety goal: {shortest_path[1]}")  # ?
-
     if not shortest_path:
-        return "NO_WAY_OUT"
+        return "NO_WAY_OUT"  # gets converted into random action for bomb_safety_direction feature
+
+    self.logger.debug(f"There is a bomb safety goal and it is: {shortest_path[1]}")  # ?
 
     return _get_action(self, own_position, shortest_path)
 
 
-def safe_to_bomb_feature(self, game_state) -> int:
-    if not game_state["self"][2]:
+def safe_to_bomb_feature(self, original_game_state) -> int:
+    # feature doesn't work correctly in first round, and first round is never safe anyway
+    if original_game_state["round"] == 1:
         return 0
-    # return 0 if there would be no path away from bomb if bomb was in place of own coord
+
+    # can't place bomb
+    if not original_game_state["self"][2]:
+        return 0
+
+    # if there was a bomb in current self position, would there be a an escape route?
+    altered_game_state = deepcopy(original_game_state)
+    altered_game_state["bombs"].append((original_game_state["self"][-1], 4))
+    if bomb_safety_direction_feature(self, altered_game_state) == "NO_WAY_OUT":
+        return 0
+
     return 1
+
+
+def blockage_feature(game_state: dict) -> List[int]:
+    own_position = game_state["self"][-1]
+    enemy_positions = [enemy[-1] for enemy in game_state["others"]]
+    results = ["FREE", "FREE", "FREE", "FREE"]
+
+    for i, neighboring_coord in enumerate(_get_neighboring_tiles(own_position, 1)):
+        neighboring_x, neighboring_y = neighboring_coord
+        neighboring_content = game_state["field"][neighboring_x][
+            neighboring_y
+        ]  # content of tile, e.g. crate=1
+        explosion = (
+            True if game_state["explosion_map"][neighboring_x][neighboring_y] != 0 else False
+        )
+        ripe_bomb = False  # "ripe" = about to explode
+        if (neighboring_coord, 0) in game_state["bombs"] or (
+            neighboring_coord,
+            1,
+        ) in game_state["bombs"]:
+            ripe_bomb = True
+        if (
+            neighboring_content != 0
+            or neighboring_coord in enemy_positions
+            or explosion
+            or ripe_bomb
+        ):
+            results[i] = "BLOCKED"
+    return results
 
 
 def state_to_features(self, game_state) -> np.array:
     """Parses game state to features"""
 
-    state_dict = {
-        "coin_direction": None,
-        "bomb_safe_direction": None,
-        "in_enemy_zone": None,
-        "safe_to_bomb": None,
-        "surrounding_crates": None,
-    }
+    state_dict = {}
 
     # Feature 1: Next direction in shortest path to nearest coin or crate
     direction = _shortest_path_feature(self, game_state)
@@ -656,24 +717,28 @@ def state_to_features(self, game_state) -> np.array:
     # Feature 2: Next direction in path to bomb safety zone, or "CLEAR" if not in bomb zone
     bomb_safety_result = bomb_safety_direction_feature(self, game_state)
     if bomb_safety_result in ["DOWN", "UP", "RIGHT", "LEFT", "CLEAR"]:
-        state_dict["coin_direction"] = bomb_safety_result
+        state_dict["bomb_safety_direction"] = bomb_safety_result
     elif bomb_safety_result == "NO_WAY_OUT":
-        state_dict["coin_direction"] = np.random.choice([SHORTEST_PATH_ACTIONS])
+        state_dict["bomb_safety_direction"] = np.random.choice(SHORTEST_PATH_ACTIONS)
     else:
         raise ValueError(f"Invalid directon to bomb safety: {bomb_safety_result}")
 
     # Feature 3: Is agent within bombing reach of other agent?
-    state_dict["enemy_danger_zone"] = enemy_zone_feature(game_state=game_state)
+    state_dict["in_enemy_zone"] = enemy_zone_feature(game_state=game_state)
 
     # Feature 4: Is it safe to plant a bomb?
-    answer = safe_to_bomb_feature(self, game_state)
-    if answer:
-        state_dict["safe_to_bomb"] = answer
-    else:
-        raise ValueError("'Safe to bomb' is None")
+    state_dict["safe_to_bomb"] = safe_to_bomb_feature(self, game_state)
 
-    # Feature 8: amount of crates within destruction reach: ZERO, FEW or MANY
-    state_dict["surrounding_crates"] = surrounding_crates_feature(game_state=game_state)
+    # Feature 5: amount of crates within destruction reach: ZERO, FEW or MANY
+    state_dict["crate_priority"] = crate_priority_feature(game_state=game_state)
+
+    # Feature 6-9: blocked down/up/right/left?
+    (
+        state_dict["down"],
+        state_dict["up"],
+        state_dict["right"],
+        state_dict["left"],
+    ) = blockage_feature(game_state)
 
     self.logger.info(f"Feature dict: {state_dict}")
 
@@ -681,9 +746,9 @@ def state_to_features(self, game_state) -> np.array:
         if state == state_dict:
             return i
 
+    self.logger.debug(f"State list: {self.state_list}")
     raise ReferenceError(
-        f"State dict created by state_to_features was not found in self.state_list.\n\
-        State attempted to find: {state}"
+        "State dict created by state_to_features was not found in self.state_list."
     )
 
 
