@@ -1,7 +1,6 @@
 import glob
 import itertools
 import os
-import random
 from collections import deque
 from copy import deepcopy
 from datetime import datetime
@@ -30,6 +29,7 @@ def setup(self):
     self.lattice_graph = nx.grid_2d_graph(m=COLS, n=ROWS)
     self.previous_distance = 0
     self.current_distance = 0
+    self.explosions = set()
     self.state_list = list_possible_states()
 
     # for plotting
@@ -46,7 +46,7 @@ def setup(self):
         "./q_tables/*.npy"
     )  # * means all if need specific format then *.csv
     self.latest_q_table_path = max(list_of_q_tables, key=os.path.getctime)
-    # self.latest_q_table_path = "/Users/ivo/Studium/fml/bomberman_rl/agent_code/coli_agent/q_tables/q_table-2022-03-19T18:24:04.npy"
+    # self.latest_q_table_path = "/home/aileen/heiBOX/2021_22 WS/FML/final_project/bomberman_rl/agent_code/coli_agent/q_tables/q_table-2022-03-21T15:04:52.npy"
     self.latest_q_table = np.load(self.latest_q_table_path)
 
     self.logger.info(f"Using q-table: {self.latest_q_table_path}")
@@ -58,7 +58,7 @@ def setup(self):
         self.number_of_states = 3840  # TODO: make this dynamic
 
         self.exploration_rate_initial = 1.0
-        self.exploration_rate_end = 0.05  # at end of all episodes
+        self.exploration_rate_end = 0.1  # at end of all episodes
 
         self.exploration_decay_rate = _determine_exploration_decay_rate(self)
 
@@ -687,25 +687,32 @@ def safe_to_bomb_feature(self, original_game_state) -> int:
     return 1
 
 
-def blockage_feature(game_state: dict) -> List[int]:
+def blockage_feature(self, game_state: dict) -> List[int]:
     own_position = game_state["self"][-1]
     enemy_positions = [enemy[-1] for enemy in game_state["others"]]
     results = ["FREE", "FREE", "FREE", "FREE"]
+    explosion = False
 
     for i, neighboring_coord in enumerate(_get_neighboring_tiles(own_position, 1)):
         neighboring_x, neighboring_y = neighboring_coord
         neighboring_content = game_state["field"][neighboring_x][
             neighboring_y
         ]  # content of tile, e.g. crate=1
-        explosion = (
-            True if game_state["explosion_map"][neighboring_x][neighboring_y] != 0 else False
-        )
+        if neighboring_coord in self.explosions:
+            explosion = True
+            self.explosions.remove(neighboring_coord)
+        for bomb in game_state["bombs"]:
+            if bomb[0] == neighboring_coord:
+                ripe_bomb = True
+                if bomb[1] == 0:
+                    future_explosion = get_neighboring_tiles_until_wall(
+                        neighboring_coord, 3, game_state
+                    )
+                    future_explosion += neighboring_coord
+                    self.explosions.update(future_explosion)
+        if game_state["explosion_map"][neighboring_x][neighboring_y] != 0:
+            explosion = True
         ripe_bomb = False  # "ripe" = about to explode
-        if (neighboring_coord, 0) in game_state["bombs"] or (
-            neighboring_coord,
-            1,
-        ) in game_state["bombs"]:
-            ripe_bomb = True
         if (
             neighboring_content != 0
             or neighboring_coord in enemy_positions
@@ -752,7 +759,7 @@ def state_to_features(self, game_state) -> np.array:
         state_dict["up"],
         state_dict["right"],
         state_dict["left"],
-    ) = blockage_feature(game_state)
+    ) = blockage_feature(self, game_state)
 
     self.logger.info(f"Feature dict: {state_dict}")
 
