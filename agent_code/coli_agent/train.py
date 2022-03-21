@@ -73,10 +73,23 @@ def game_events_occurred(self, old_game_state, self_action: str, new_game_state,
 
     # Custom events and stuff
 
+    reward_coin_feature = True
     if (
-        old_feature_dict["bomb_safety_direction"] == "CLEAR"
-        and old_feature_dict["in_enemy_zone"] == 0
+        old_feature_dict["bomb_safety_direction"] != "CLEAR"
+        or old_feature_dict["in_enemy_zone"] != 0
     ):
+        reward_coin_feature = False
+    # somestimes coin_direction is random and can, e.g., be an explosion
+    if old_feature_dict["coin_direction"] == "UP" and old_feature_dict["up"] != "BLOCKED":
+        reward_coin_feature = False
+    if old_feature_dict["coin_direction"] == "DOWN" and old_feature_dict["down"] != "BLOCKED":
+        reward_coin_feature = False
+    if old_feature_dict["coin_direction"] == "RIGHT" and old_feature_dict["right"] != "BLOCKED":
+        reward_coin_feature = False
+    if old_feature_dict["coin_direction"] == "LEFT" and old_feature_dict["left"] != "BLOCKED":
+        reward_coin_feature = False
+
+    if reward_coin_feature is True:
         if old_feature_dict["coin_direction"] == self_action:
             events.append(FOLLOWED_COIN_DIRECTION)
         else:
@@ -199,40 +212,30 @@ def end_of_round(self, last_game_state, last_action, events):
     self.episode += 1
 
 
-# training plan
-# 1: don't move into blocked (solo coin heaven without coin reward nor bomb rewards)
-# 2: don't blow self up (solo coin heaven with bomb rewards)
-# 3: blow crates up (solo classic w/o coin rewards)
-# 4: collect coins (back to coin heaven solo with bomb and coin and bomb rewards) (maybe just coin)
-# 5: combine coins + crates (solo classic with coin and bomb rewards)
-# 6: introduce enemies (coin heaven)
-# 7: combine all (classic)
-
-
 def reward_from_events(self, events: List[str]) -> int:
     """
     Returns a summed up reward/penalty for a given list of events that happened.
     """
 
     game_rewards = {
-        e.BOMB_DROPPED: 10,
+        # e.BOMB_DROPPED: 10,
         e.BOMB_EXPLODED: 0,
-        e.COIN_COLLECTED: 0,
+        # e.COIN_COLLECTED: 100,
         e.COIN_FOUND: 0,
         e.WAITED: 0,
         e.CRATE_DESTROYED: 0,
         e.GOT_KILLED: 0,
         e.KILLED_OPPONENT: 0,
-        e.KILLED_SELF: 0,  # this *also* triggers GOT_KILLED
+        # e.KILLED_SELF: -1000,  # this *also* triggers GOT_KILLED
         e.OPPONENT_ELIMINATED: 0,
         e.SURVIVED_ROUND: 0,
         e.INVALID_ACTION: 0,
-        # FOLLOWED_COIN_DIRECTION: 5,
-        # NOT_FOLLOWED_COIN_DIRECTION: -10,
+        # FOLLOWED_COIN_DIRECTION: 15,
+        # NOT_FOLLOWED_COIN_DIRECTION: -20,
         FOLLOWED_BOMB_DIRECTION: 25,
         NOT_FOLLOWED_BOMB_DIRECTION: -50,
         DROPPED_BAD_BOMB: -100,
-        DROPPED_UNNECESSARY_BOMB: -100,
+        DROPPED_UNNECESSARY_BOMB: -75,
         TARGETED_MANY_CRATES: 50,
         TARGETED_SOME_CRATES: 10,
         # TARGETED_ENEMY: 30,
