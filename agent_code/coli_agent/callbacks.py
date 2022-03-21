@@ -159,18 +159,18 @@ def act(self, game_state: dict) -> str:
     self.logger.debug(f"State: {state}")
 
     # 100% exploitation once we have learnt the q-table/exploit in training
-    # action = ACTIONS[np.argmax(self.q_table[state])]
+    action = ACTIONS[np.argmax(self.q_table[state])]
 
     # Alternative: sample from the learnt q_table distribution.
-    if not np.any(self.q_table[state]):
-        self.logger.debug("Q-Table has all zeros --> choosing random action")
-        action = np.random.choice(ACTIONS)
-    else:
-        self.logger.debug("Sampling action from Q-Table")
-        lowest_q_value_of_state = np.min(self.q_table[state])
-        non_negative_q_table = self.q_table[state] + abs(lowest_q_value_of_state)
-        probabilities = [(q_value / sum(non_negative_q_table)) for q_value in non_negative_q_table]
-        action = np.random.choice(ACTIONS, p=probabilities)
+    # if not np.any(self.q_table[state]):
+    #     self.logger.debug("Q-Table has all zeros --> choosing random action")
+    #     action = np.random.choice(ACTIONS)
+    # else:
+    #     self.logger.debug("Sampling action from Q-Table")
+    #     lowest_q_value_of_state = np.min(self.q_table[state])
+    #     non_negative_q_table = self.q_table[state] + abs(lowest_q_value_of_state)
+    #     probabilities = [(q_value / sum(non_negative_q_table)) for q_value in non_negative_q_table]
+    #     action = np.random.choice(ACTIONS, p=probabilities)
 
     self.logger.info(f"Action chosen: {action}")
     return action
@@ -623,28 +623,31 @@ def bomb_safety_direction_feature(self, game_state) -> Action:
     * shortest path might change frequently because enemy is moving away -> leads to moving back and forth
     """
     own_position = game_state["self"][-1]
+    bomb_positions = [bomb[0] for bomb in game_state["bombs"]]
+
+    # radius around agent in which a bomb would hit it
     relevant_neighbors = get_neighboring_tiles_until_wall(own_position, 3, game_state)
     relevant_neighbors.append(own_position)
-    bomb_positions = [bomb[0] for bomb in game_state["bombs"]]
-    self.logger.debug(f"Bomb positions: {bomb_positions}")
 
     if not any(
         [neighbor in bomb_positions for neighbor in relevant_neighbors]
     ):  # agent is not in any future explosion zone of bomb
         return "CLEAR"
 
-    bomb_explosion_tiles = [own_position]
+    bomb_explosion_tiles = [
+        own_position
+    ]  # on which tiles will there be an explosion? (always incudes self, otherwise would be CLEAR)
     reach = 4  # how far we can still go before most urgent bomb blows up
     for bomb in game_state["bombs"]:
         bomb_explosion_tiles += get_neighboring_tiles_until_wall(bomb[0], 3, game_state)
         if bomb[1] + 1 < reach:
             reach = bomb[1] + 1
-    self.logger.debug(f"Reach: {reach}")
+
     graph = _get_graph(self, game_state)
     available_neighbors = _get_surrounding_tiles(own_position, reach)
 
     shortest_path = None
-    shortest_distance = 1000
+    shortest_distance = 1000  # arbitrary high number
     for n in available_neighbors:
         if n not in graph or n in bomb_explosion_tiles:
             continue
@@ -661,21 +664,21 @@ def bomb_safety_direction_feature(self, game_state) -> Action:
     if not shortest_path:
         return "NO_WAY_OUT"  # gets converted into random action for bomb_safety_direction feature
 
-    self.logger.debug(f"There is a bomb safety goal and it is: {shortest_path[1]}")  # ?
+    self.logger.debug(f"There is a bomb safety goal and the next step is: {shortest_path[1]}")
 
     return _get_action(self, own_position, shortest_path)
 
 
 def safe_to_bomb_feature(self, original_game_state) -> int:
-    # feature doesn't work correctly in first round, and first round is never safe anyway
-    if original_game_state["round"] == 1:
+    # feature doesn't work correctly in first step, and first position is never safe anyway
+    if original_game_state["step"] == 1:
         return 0
 
     # can't place bomb
     if not original_game_state["self"][2]:
         return 0
 
-    # if there was a bomb in current self position, would there be a an escape route?
+    # if there was a bomb in current self position, would there be an escape route?
     altered_game_state = deepcopy(original_game_state)
     altered_game_state["bombs"].append((original_game_state["self"][-1], 4))
     if bomb_safety_direction_feature(self, altered_game_state) == "NO_WAY_OUT":
