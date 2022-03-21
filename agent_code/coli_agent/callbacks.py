@@ -804,6 +804,7 @@ def _get_safe_tiles(self, source_coord, game_state):
     safe_tiles = 0
     safe_tiles_coords = []
     crate = 0
+    crate_coords = []
     opponents_killed = 0
 
     directions = ["N", "E", "S", "W"]
@@ -829,6 +830,7 @@ def _get_safe_tiles(self, source_coord, game_state):
                                 safe_tiles_coords.append((own_coord_x, own_coord_y - i - 1))
                     elif game_state["field"][own_coord_x][own_coord_y - i] == 1:
                         crate += 1
+                        # crate_coords.append((own_coord_x, own_coord_y - i))
 
                     elif (own_coord_x, own_coord_y - i) in opponents_pos:
                         opponents_killed += 1
@@ -852,8 +854,10 @@ def _get_safe_tiles(self, source_coord, game_state):
                                 safe_tiles += 1
                                 safe_tiles_coords.append((own_coord_x + i + 1, own_coord_y))
 
-                    elif game_state["field"][own_coord_x + 1][own_coord_y] == 1:
+                    elif game_state["field"][own_coord_x + i][own_coord_y] == 1:
                         crate += 1
+                        # crate_coords.append((own_coord_x, own_coord_y - i))
+
                     elif (own_coord_x + 1, own_coord_y) in opponents_pos:
                         opponents_killed += 1
                     else:
