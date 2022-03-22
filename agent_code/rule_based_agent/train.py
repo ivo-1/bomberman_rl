@@ -1,5 +1,4 @@
-import pickle
-from collections import deque, namedtuple
+from collections import namedtuple
 from datetime import datetime
 from typing import List
 
@@ -10,17 +9,9 @@ import events as e
 from .callbacks import state_to_features
 
 # This is only an example!
-Transition = namedtuple("Transition", ("state", "action", "next_state", "reward"))
+Transition = namedtuple("Transition", ("state", "action", "reward"))  # "next_state"
 
-# Hyper parameters -- DO modify
-TRANSITION_HISTORY_SIZE = 3  # keep only ... last transitions
-RECORD_ENEMY_TRANSITIONS = 1.0  # record enemy transitions with probability ...
-
-# Events
-PLACEHOLDER_EVENT = "PLACEHOLDER"
-
-global transitions_over_episodes
-transitions_over_episodes = []
+# global trajectories_over_episodes
 
 
 def setup_training(self):
@@ -33,7 +24,8 @@ def setup_training(self):
     """
     # Example: Setup an array that will note transition tuples
     # (s, a, r, s') # TODO: we might need s' but I assume we don't
-    self.transitions_over_episodes = []
+    self.episode_trajectory = []
+    self.trajectories_over_episodes = []
     self.episode = 1  # need to keep track of episodes
     self.timestamp = datetime.now().strftime("%Y-%m-%dT%H:%M:%S:%f")
 
@@ -62,13 +54,12 @@ def game_events_occurred(
     )
 
     # state_to_features is defined in callbacks.py
-    self.transitions_over_episodes.append(
+    self.episode_trajectory.append(
         Transition(
             state_to_features(self, old_game_state),
             self_action,
-            state_to_features(self, new_game_state),
             reward_from_events(self, events),
-        )
+        )  # state_to_features(self, new_game_state), new game state shouldn't be necessary
     )
 
 
@@ -86,27 +77,30 @@ def end_of_round(self, last_game_state: dict, last_action: str, events: List[str
     :param self: The same object that is passed to all of your callbacks.
     """
     self.logger.debug(f'Encountered event(s) {", ".join(map(repr, events))} in final step')
-    self.transitions_over_episodes.append(
+    self.episode_trajectory.append(
         Transition(
             state_to_features(self, last_game_state),
             last_action,
-            None,
             reward_from_events(self, events),
         )
     )
 
-    # TODO: Store the encountered trajectory of (state, action, reward) in a npy
+    # store the episode trajectory into the global variable
+    self.trajectories_over_episodes.append(self.episode_trajectory)
+
+    # print(f"Episode: {self.episode}")
+
+    # Store all encountered trajectories of (state, action, reward) in a npy when last episode finished
     if self.n_rounds == self.episode:  # we're in the last planned episode
-        transitions = [
-            (transition[0], transition[1], transition[3])
-            for transition in self.transitions_over_episodes
-        ]  # skipping s'
-        transitions = np.array(transitions)
-        print("Length of transition of agent:\n")
-        print(len(transitions))
+        trajectories = np.array(self.trajectories_over_episodes, dtype=object)
+        print("How many trajectories?\n")
+        print(len(trajectories))
+        print("Average trajectory length:\n")
+        print(np.average([len(trajectory) for trajectory in trajectories]))
 
-        np.save(f"transitions_{self.timestamp}", transitions)
+        np.save(f"trajectories_{self.timestamp}", trajectories)
 
+    self.episode_trajectory = []  # reset episode trajectory
     self.episode += 1
 
 

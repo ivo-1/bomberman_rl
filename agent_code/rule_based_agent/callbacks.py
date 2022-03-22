@@ -305,15 +305,18 @@ def state_to_features(self, game_state) -> np.array:
             feature_vector[index] = self.field_state_to_idx["wall"]
             continue
 
-        elif coordinate in [
-            index for index, field in np.ndenumerate(game_state["field"]) if field == -1
-        ]:  # it's a wall (unambiguos)
+        elif (
+            list(coordinate) in np.argwhere(game_state["field"] == -1).tolist()
+        ):  # it's a wall (unambiguos)
+            # print(np.argwhere(game_state["field"]==-1))
+            # print(coordinate)
+            # break
             feature_vector[index] = self.field_state_to_idx["wall"]
             continue
 
-        elif coordinate in [
-            index for index, field in np.ndenumerate(game_state["field"]) if field == 1
-        ]:  # it's a crate (unambiguos)
+        elif (
+            list(coordinate) in np.argwhere(game_state["field"] == 1).tolist()
+        ):  # it's a crate (unambiguos)
             feature_vector[index] = self.field_state_to_idx["crate"]
             continue
 
@@ -376,17 +379,19 @@ def state_to_features(self, game_state) -> np.array:
                 raise ValueError("Impossible coin field")
 
         # check if there's an explosion
-        elif coordinate in [
-            index for index, field in np.ndenumerate(game_state["explosion_map"]) if field != 0
-        ]:  # it's an explosion
+        elif (
+            list(coordinate) in np.argwhere(game_state["explosion_map"] != 0).tolist()
+        ):  # it's an explosion
             feature_vector[index] = self.field_state_to_idx["explosion"]
+            continue
 
         # can only be free but nonetheless check
-        elif coordinate in [
-            index for index, field in np.ndenumerate(game_state["field"]) if field == 0
-        ]:
+        elif (
+            list(coordinate) in np.argwhere(game_state["explosion_map"] == 0).tolist()
+        ):  # it's free
             feature_vector[index] = self.field_state_to_idx["free"]
             continue
+
         else:
             print(index)
             print(coordinate)
