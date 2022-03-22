@@ -801,6 +801,10 @@ def _get_safe_tiles(self, source_coord, game_state):
     opponents_pos = [op[-1] for op in game_state["others"]]
     bombs_pos = [b[0] for b in game_state["bombs"]]
 
+    active_explosions = [
+        index for index, field in np.ndenumerate(game_state["explosion_map"]) if field != 0
+    ]
+
     safe_tiles = 0
     safe_tiles_coords = []
     crate = 0
@@ -811,12 +815,18 @@ def _get_safe_tiles(self, source_coord, game_state):
     own_coord_x, own_coord_y = own_position[0], own_position[1]
 
     for d, _ in enumerate(directions):
+        crate_in_the_way = False
         for i in range(1, 3 + 1):
             try:
                 if directions[d] == "N":
-                    if (
+                    if game_state["field"][own_coord_x][own_coord_y - i] == 1:
+                        crate += 1
+                        crate_in_the_way = True
+                    elif (
                         game_state["field"][own_coord_x][own_coord_y - i] == 0
                         and (own_coord_x, own_coord_y - i) not in bombs_pos
+                        and (own_coord_x, own_coord_y - i) not in active_explosions
+                        and not crate_in_the_way
                     ):
                         if game_state["field"][own_coord_x - 1][own_coord_y - i] == 0:
                             safe_tiles += 1
@@ -828,20 +838,26 @@ def _get_safe_tiles(self, source_coord, game_state):
                             if game_state["field"][own_coord_x][own_coord_y - i - 1] == 0:
                                 safe_tiles += 1
                                 safe_tiles_coords.append((own_coord_x, own_coord_y - i - 1))
-                    elif game_state["field"][own_coord_x][own_coord_y - i] == 1:
-                        crate += 1
                         # crate_coords.append((own_coord_x, own_coord_y - i))
 
-                    elif (own_coord_x, own_coord_y - i) in opponents_pos:
-                        opponents_killed += 1
+                    # if (own_coord_x, own_coord_y - i) in opponents_pos:
+                    #     opponents_killed += 1
+
+                    # break
+                    # crate_in_the_way = True
 
                     else:
                         break
 
                 if directions[d] == "E":
-                    if (
+                    if game_state["field"][own_coord_x + i][own_coord_y] == 1:
+                        crate += 1
+                        crate_in_the_way = True
+                    elif (
                         game_state["field"][own_coord_x + i][own_coord_y] == 0
                         and (own_coord_x + i, own_coord_y) not in bombs_pos
+                        and (own_coord_x + i, own_coord_y) not in active_explosions
+                        and not crate_in_the_way
                     ):
                         if game_state["field"][own_coord_x + i][own_coord_y - 1] == 0:
                             safe_tiles += 1
@@ -854,19 +870,23 @@ def _get_safe_tiles(self, source_coord, game_state):
                                 safe_tiles += 1
                                 safe_tiles_coords.append((own_coord_x + i + 1, own_coord_y))
 
-                    elif game_state["field"][own_coord_x + i][own_coord_y] == 1:
-                        crate += 1
-                        # crate_coords.append((own_coord_x, own_coord_y - i))
+                    # elif (own_coord_x + 1, own_coord_y) in opponents_pos:
+                    #     opponents_killed += 1
 
-                    elif (own_coord_x + 1, own_coord_y) in opponents_pos:
-                        opponents_killed += 1
+                    # break
+                    # crate_coords.append((own_coord_x, own_coord_y - i))
                     else:
                         break
 
                 if directions[d] == "S":
-                    if (
+                    if game_state["field"][own_coord_x][own_coord_y + i] == 1:
+                        crate += 1
+                        crate_in_the_way = True
+                    elif (
                         game_state["field"][own_coord_x][own_coord_y + i] == 0
                         and (own_coord_x, own_coord_y + i) not in bombs_pos
+                        and (own_coord_x, own_coord_y + i) not in active_explosions
+                        and not crate_in_the_way
                     ):
                         if game_state["field"][own_coord_x - 1][own_coord_y + i] == 0:
                             safe_tiles += 1
@@ -879,17 +899,20 @@ def _get_safe_tiles(self, source_coord, game_state):
                                 safe_tiles += 1
                                 safe_tiles_coords.append((own_coord_x, own_coord_y + i + 1))
 
-                    elif game_state["field"][own_coord_x][own_coord_y + i] == 1:
-                        crate += 1
-                    elif (own_coord_x, own_coord_y + i) in opponents_pos:
-                        opponents_killed += 1
+                    # elif (own_coord_x, own_coord_y + i) in opponents_pos:
+                    #     opponents_killed += 1
                     else:
                         break
 
                 if directions[d] == "W":
-                    if (
+                    if game_state["field"][own_coord_x - i][own_coord_y] == 1:
+                        crate += 1
+                        crate_in_the_way = True
+                    elif (
                         game_state["field"][own_coord_x - i][own_coord_y] == 0
                         and (own_coord_x - i, own_coord_y) not in bombs_pos
+                        and (own_coord_x - i, own_coord_y) not in active_explosions
+                        and not crate_in_the_way
                     ):
                         if game_state["field"][own_coord_x - i][own_coord_y - 1] == 0:
                             safe_tiles += 1
@@ -901,10 +924,9 @@ def _get_safe_tiles(self, source_coord, game_state):
                             if game_state["field"][own_coord_x - i - 1][own_coord_y] == 0:
                                 safe_tiles += 1
                                 safe_tiles_coords.append((own_coord_x - i - 1, own_coord_y))
-                    elif game_state["field"][own_coord_x - i][own_coord_y] == 1:
-                        crate += 1
-                    elif (own_coord_x - 1, own_coord_y) in opponents_pos:
-                        opponents_killed += 1
+
+                    # elif (own_coord_x - 1, own_coord_y) in opponents_pos:
+                    #     opponents_killed += 1
                     else:
                         break
 
@@ -929,7 +951,7 @@ def current_field_feature(self, game_state):
 
     danger = False
     for (pos, content) in bombs_dict.items():
-        self.logger.debug(f"own: {own_position}, neis: {content[0]}, countdown: {content[1]}")
+        # self.logger.debug(f"own: {own_position}, neis: {content[0]}, countdown: {content[1]}")
         if (own_position == pos) or (own_position in content[0]):  #  and (content[1] == 0):
             danger = True
             self.logger.debug(f"Haha, I'm in danger.")
@@ -940,32 +962,47 @@ def current_field_feature(self, game_state):
     if danger:
         safe_tiles_wrt_bombs = []
         for pos, content in bombs_dict.items():
-            if own_position in content[0] and own_position[1] == pos[1]:  # if same y-axis
-                if own_position[0] <= pos[0]:
-                    _, safe_tiles_wrt_bomb, _ = _get_safe_tiles(self, pos, game_state)
-                    for tile in safe_tiles_wrt_bomb:
-                        if tile[0] < pos[0]:
-                            safe_tiles_wrt_bombs.append(tile)
-                elif own_position[0] >= pos[0]:
-                    _, safe_tiles_wrt_bomb, _ = _get_safe_tiles(self, pos, game_state)
-                    for tile in safe_tiles_wrt_bomb:
-                        if tile[0] > pos[0]:
-                            safe_tiles_wrt_bombs.append(tile)
-            elif own_position in content[0] and own_position[0] == pos[0]:  # if same y-axis
-                if own_position[1] <= pos[1]:
-                    _, safe_tiles_wrt_bomb, _ = _get_safe_tiles(self, pos, game_state)
-                    for tile in safe_tiles_wrt_bomb:
-                        if tile[1] < pos[1]:
-                            safe_tiles_wrt_bombs.append(tile)
-                elif own_position[1] >= pos[1]:
-                    _, safe_tiles_wrt_bomb, _ = _get_safe_tiles(self, pos, game_state)
-                    for tile in safe_tiles_wrt_bomb:
-                        if tile[1] > pos[1]:
-                            safe_tiles_wrt_bombs.append(tile)
+            # if (own_position in content[0] or own_position == pos) and own_position[1] == pos[1]:  # if same y-axis
+            if own_position == pos:
+                self.logger.debug(f"own bomb was placed on {pos}")
+                _, safe_tiles_wrt_bomb, _ = _get_safe_tiles(self, pos, game_state)
+                for tile in safe_tiles_wrt_bomb:
+                    safe_tiles_wrt_bombs.append(tile)
+
+            elif own_position in content[0]:
+                if own_position[1] == pos[1]:  # if same y-axis
+                    if own_position[0] < pos[0]:
+                        _, safe_tiles_wrt_bomb, _ = _get_safe_tiles(self, pos, game_state)
+                        for tile in safe_tiles_wrt_bomb:
+                            if tile[0] < pos[0]:
+                                # self.logger.debug(f'tile on the left of bomb {tile}')
+                                safe_tiles_wrt_bombs.append(tile)
+                    elif own_position[0] > pos[0]:
+                        _, safe_tiles_wrt_bomb, _ = _get_safe_tiles(self, pos, game_state)
+                        for tile in safe_tiles_wrt_bomb:
+                            if tile[0] > pos[0]:
+                                # self.logger.debug(f'tile on the right of bomb {tile}')
+                                safe_tiles_wrt_bombs.append(tile)
+                # elif (own_position in content[0] or own_position == pos) and own_position[0] == pos[0]:  # if same y-axis
+                elif own_position[0] == pos[0]:  # if same x-axis
+                    if own_position[1] < pos[1]:
+                        _, safe_tiles_wrt_bomb, _ = _get_safe_tiles(self, pos, game_state)
+                        for tile in safe_tiles_wrt_bomb:
+                            if tile[1] < pos[1]:
+                                safe_tiles_wrt_bombs.append(tile)
+                                # self.logger.debug(f'tile above bomb {tile}')
+                    elif own_position[1] > pos[1]:
+                        _, safe_tiles_wrt_bomb, _ = _get_safe_tiles(self, pos, game_state)
+                        for tile in safe_tiles_wrt_bomb:
+                            if tile[1] > pos[1]:
+                                safe_tiles_wrt_bombs.append(tile)
+                                # self.logger.debug(f'tile under bomb {tile}')
 
     safe_tiles = len(safe_tiles_coords)
 
-    self.logger.debug(f"crates: {crate}, safe tiles: {safe_tiles_coords}, ops: {opponents_killed}")
+    self.logger.debug(
+        f"crates: {crate}, safe tiles with no crates in between: {safe_tiles_coords}, ops: {opponents_killed}"
+    )
     self.logger.debug(
         f"crates: {crate}, safe tiles wrt bombs: {safe_tiles_wrt_bombs}, ops: {opponents_killed}"
     )
@@ -976,10 +1013,10 @@ def current_field_feature(self, game_state):
     if (crate >= 6 or opponents_killed > 1) and safe_tiles > 0 and game_state["self"][2] == True:
         current_field = 3
 
-    if (crate >= 3 or opponents_killed > 1) and safe_tiles > 0 and game_state["self"][2] == True:
+    elif (crate >= 3 or opponents_killed > 1) and safe_tiles > 0 and game_state["self"][2] == True:
         current_field = 2
 
-    if (crate >= 1 or opponents_killed == 1) and safe_tiles > 0 and game_state["self"][2] == True:
+    elif (crate >= 1 or opponents_killed > 1) and safe_tiles > 0 and game_state["self"][2] == True:
         current_field = 1
 
     if (
