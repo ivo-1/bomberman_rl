@@ -259,7 +259,7 @@ def _find_shortest_path(graph, a, b) -> Tuple[Graph, int]:
     try:
         shortest_path = nx.shortest_path(graph, source=a, target=b, weight=None, method="dijkstra")
     except nx.exception.NodeNotFound as e:
-        print(graph.nodes)
+        # print(graph.nodes)
         raise e
 
     shortest_path_length = len(shortest_path) - 1  # because path considers self as part of the path
@@ -796,6 +796,53 @@ def neighbouring_field_feature(self, game_state):
     return neighbours_result
 
 
+def destroyable_crates(self, source_coord, game_state):
+    own_position = source_coord
+    crate_coords = []
+
+    directions = ["N", "E", "S", "W"]
+    own_coord_x, own_coord_y = own_position[0], own_position[1]
+
+    for d, _ in enumerate(directions):
+        crate_in_the_way = False
+        for i in range(1, 3 + 1):
+            try:
+                if directions[d] == "N":
+                    if game_state["field"][own_coord_x][own_coord_y - i] == 1:
+                        # crate += 1
+                        crate_coords.append((own_coord_x, own_coord_y - i))
+                    elif game_state["field"][own_coord_x][own_coord_y - i] == -1:
+                        break
+
+                if directions[d] == "E":
+                    if game_state["field"][own_coord_x + i][own_coord_y] == 1:
+                        # crate += 1
+                        crate_coords.append((own_coord_x + i, own_coord_y))
+                    elif game_state["field"][own_coord_x + i][own_coord_y] == -1:
+                        break
+
+                if directions[d] == "S":
+                    if game_state["field"][own_coord_x][own_coord_y + i] == 1:
+                        # crate += 1
+                        crate_coords.append((own_coord_x, own_coord_y + i))
+                    elif game_state["field"][own_coord_x][own_coord_y + i] == -1:
+                        break
+                if directions[d] == "W":
+                    if game_state["field"][own_coord_x - i][own_coord_y] == 1:
+                        # crate += 1
+                        crate_coords.append((own_coord_x - i, own_coord_y))
+                    elif game_state["field"][own_coord_x - i][own_coord_y] == -1:
+                        break
+
+            except IndexError:
+                # print("Border")
+                break
+
+    self.logger.debug(f"Destroyable crate positions: {crate_coords}")
+
+    return crate_coords
+
+
 def _get_safe_tiles(self, source_coord, game_state):
     own_position = source_coord
     opponents_pos = [op[-1] for op in game_state["others"]]
@@ -938,13 +985,14 @@ def _get_safe_tiles(self, source_coord, game_state):
 
 
 def current_field_feature(self, game_state):
+    graph = _get_graph(self, game_state)
     own_position = game_state["self"][-1]
     opponents_pos = [op[-1] for op in game_state["others"]]
     bombs_pos = [b[0] for b in game_state["bombs"]]
-    safe_tiles_wrt_bombs = []
     safe_tiles_coords = []
+    reachable_tiles = []
 
-    bombs_dict = {}
+    bombs_dict = {}  # key: bomb position, value: [[neighbours position], countdown]
     for b in game_state["bombs"]:
         neighbours = get_neighboring_tiles_until_wall(b[0], 3, game_state=game_state)
         bombs_dict[b[0]] = [neighbours, b[1]]
@@ -952,53 +1000,102 @@ def current_field_feature(self, game_state):
     danger = False
     for (pos, content) in bombs_dict.items():
         # self.logger.debug(f"own: {own_position}, neis: {content[0]}, countdown: {content[1]}")
-        if (own_position == pos) or (own_position in content[0]):  #  and (content[1] == 0):
+        if (own_position == pos) or (
+            own_position in content[0]
+        ):  # if standing on bomb or if in bomb zone
             danger = True
             self.logger.debug(f"Haha, I'm in danger.")
             break
 
-    crate, safe_tiles_coords, opponents_killed = _get_safe_tiles(self, own_position, game_state)
+    crate, safe_tiles_coords, opponents_killed = _get_safe_tiles(
+        self, own_position, game_state
+    )  # get safe tiles wrt own position, crates and opponents in bomb range and
+
+    # if len(paths) <= countdown, add to safe_tiles
+
+    bomb_explosion_tiles = []
+    reach = 4  # how far we can still go before most urgent bomb blows up
+    for bomb in game_state["bombs"]:
+        bomb_explosion_tiles += get_neighboring_tiles_until_wall(bomb[0], 3, game_state)
+        if bomb[1] + 1 < reach:
+            reach = bomb[1] + 1
+
+    safe_tiles_wrt_bombs = []
 
     if danger:
-        safe_tiles_wrt_bombs = []
+
         for pos, content in bombs_dict.items():
+
             # if (own_position in content[0] or own_position == pos) and own_position[1] == pos[1]:  # if same y-axis
             if own_position == pos:
                 self.logger.debug(f"own bomb was placed on {pos}")
                 _, safe_tiles_wrt_bomb, _ = _get_safe_tiles(self, pos, game_state)
-                for tile in safe_tiles_wrt_bomb:
-                    safe_tiles_wrt_bombs.append(tile)
+
+                tiles = [tile for tile in safe_tiles_wrt_bomb]
+
+                safe_tiles_wrt_bombs.append([tiles, content[1]])
 
             elif own_position in content[0]:
+                self.logger.debug(f"bomb_position {pos}")
                 if own_position[1] == pos[1]:  # if same y-axis
                     if own_position[0] < pos[0]:
                         _, safe_tiles_wrt_bomb, _ = _get_safe_tiles(self, pos, game_state)
+                        tiles = []
                         for tile in safe_tiles_wrt_bomb:
                             if tile[0] < pos[0]:
-                                # self.logger.debug(f'tile on the left of bomb {tile}')
-                                safe_tiles_wrt_bombs.append(tile)
+                                self.logger.debug(f"tile on the left of bomb {tile}")
+                                tiles.append(tile)
+                        safe_tiles_wrt_bombs.append([tiles, content[1]])
+
                     elif own_position[0] > pos[0]:
+                        tiles = []
                         _, safe_tiles_wrt_bomb, _ = _get_safe_tiles(self, pos, game_state)
                         for tile in safe_tiles_wrt_bomb:
                             if tile[0] > pos[0]:
-                                # self.logger.debug(f'tile on the right of bomb {tile}')
-                                safe_tiles_wrt_bombs.append(tile)
+                                self.logger.debug(f"tile on the right of bomb {tile}")
+                                tiles.append(tile)
+                        safe_tiles_wrt_bombs.append([tiles, content[1]])
+
                 # elif (own_position in content[0] or own_position == pos) and own_position[0] == pos[0]:  # if same y-axis
                 elif own_position[0] == pos[0]:  # if same x-axis
                     if own_position[1] < pos[1]:
                         _, safe_tiles_wrt_bomb, _ = _get_safe_tiles(self, pos, game_state)
+                        tiles = []
                         for tile in safe_tiles_wrt_bomb:
                             if tile[1] < pos[1]:
-                                safe_tiles_wrt_bombs.append(tile)
-                                # self.logger.debug(f'tile above bomb {tile}')
+                                self.logger.debug(f"tile above bomb {tile}")
+                                tiles.append(tile)
+                        safe_tiles_wrt_bombs.append([tiles, content[1]])
+
                     elif own_position[1] > pos[1]:
                         _, safe_tiles_wrt_bomb, _ = _get_safe_tiles(self, pos, game_state)
+                        tiles = []
                         for tile in safe_tiles_wrt_bomb:
                             if tile[1] > pos[1]:
-                                safe_tiles_wrt_bombs.append(tile)
-                                # self.logger.debug(f'tile under bomb {tile}')
+                                self.logger.debug(f"tile under bomb {tile}")
+                                tiles.append(tile)
+                        safe_tiles_wrt_bombs.append([tiles, content[1]])
 
-    safe_tiles = len(safe_tiles_coords)
+        for (tiles, countdown) in safe_tiles_wrt_bombs:
+            for tile in tiles:
+                self.logger.debug(f"Possible goal {tile} in {countdown} steps?")
+
+                try:
+                    path = _find_shortest_path(graph, own_position, tile)
+                    # self.logger.debug(f"Possible {path} in {countdown} steps")
+                    if path[1] <= countdown:
+                        self.logger.debug(f"Reachable {path} in {countdown} steps")
+                        reachable_tiles.append(tile)
+                    else:
+                        self.logger.debug(f"Not reachable {path} in {countdown} steps")
+                except nx.exception.NetworkXNoPath:
+                    self.logger.debug(f"There is no path")
+                except nx.exception.NodeNotFound:
+                    self.logger.debug(f"It's the exception")
+                    continue
+
+    # safe_tiles = len(safe_tiles_coords)
+    safe_tiles = len(reachable_tiles)
 
     self.logger.debug(
         f"crates: {crate}, safe tiles with no crates in between: {safe_tiles_coords}, ops: {opponents_killed}"
@@ -1006,6 +1103,7 @@ def current_field_feature(self, game_state):
     self.logger.debug(
         f"crates: {crate}, safe tiles wrt bombs: {safe_tiles_wrt_bombs}, ops: {opponents_killed}"
     )
+    self.logger.debug(f"crates: {crate}, safe and reachable tiles wrt bombs: {reachable_tiles}")
 
     if (own_position in bombs_dict.keys()) or danger:
         current_field = 4
@@ -1079,11 +1177,13 @@ def state_to_features(self, game_state) -> np.array:
     # New feature 6 ('Game mode')
     state_dict["game_mode"] = mode_feature(self, game_state=game_state)
 
+    destroyable_crates(self, game_state["self"][-1], game_state)
+
     # Feature 6 ("Going to new tiles")
     # state_dict["progressed"] = progression_feature(self)
 
     # Feature 7: Next direction in shortest path to coin or crate
-    direction = _shortest_path_feature(self, game_state)
+    # direction = _shortest_path_feature(self, game_state)
     # same order as features 2-5
     # if direction in ["DOWN", "UP", "RIGHT", "LEFT"]:
     #     state_dict["coin_direction"] = direction

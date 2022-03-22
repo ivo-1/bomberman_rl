@@ -134,25 +134,29 @@ def game_events_occurred(self, old_game_state, self_action: str, new_game_state,
 
     # Custom events and stuff
 
-    if old_feature_dict["current_field"] == 4 and self_action == "BOMB":
+    if (
+        old_feature_dict["current_field"] == 0 or old_feature_dict["current_field"] == 4
+    ) and self_action == "BOMB":
         events.append(DROPPED_BAD_BOMB)
-    elif (
-        0 < old_feature_dict["current_field"] < 4
-        and new_feature_dict["current_field"] == 0
-        or new_feature_dict["current_field"] == 4
-    ):
+    elif 0 < old_feature_dict["current_field"] < 4 and new_feature_dict["current_field"] == 4:
         events.append(FOLLOWED_DANGER)
+        # pass
     elif old_feature_dict["current_field"] == 4 and 0 < new_feature_dict["current_field"] < 4:
         events.append(ESCAPED_DANGER)
-
-    if old_feature_dict["neighbours_up"] == 3 and new_feature_dict["neighbours_up"] <= 2:
-        events.append(ESCAPED_DANGER)
-    elif old_feature_dict["neighbours_down"] == 3 and new_feature_dict["neighbours_down"] <= 2:
-        events.append(ESCAPED_DANGER)
-    elif old_feature_dict["neighbours_right"] == 3 and new_feature_dict["neighbours_right"] <= 2:
-        events.append(ESCAPED_DANGER)
-    elif old_feature_dict["neighbours_left"] == 3 and new_feature_dict["neighbours_left"] <= 2:
-        events.append(ESCAPED_DANGER)
+    elif old_feature_dict["current_field"] == 3:  # and self_action == "BOMB":
+        events.append(TARGETED_MANY_CRATES)
+    elif old_feature_dict["current_field"] == 2:  # and self_action == "BOMB":
+        events.append(TARGETED_MANY_CRATES)
+    elif old_feature_dict["current_field"] == 1:  # and self_action == "BOMB":
+        events.append(TARGETED_SOME_CRATES)
+    # if old_feature_dict["neighbours_up"] == 3 and new_feature_dict["neighbours_up"] <= 2:
+    #     events.append(ESCAPED_DANGER)
+    # elif old_feature_dict["neighbours_down"] == 3 and new_feature_dict["neighbours_down"] <= 2:
+    #     events.append(ESCAPED_DANGER)
+    # elif old_feature_dict["neighbours_right"] == 3 and new_feature_dict["neighbours_right"] <= 2:
+    #     events.append(ESCAPED_DANGER)
+    # elif old_feature_dict["neighbours_left"] == 3 and new_feature_dict["neighbours_left"] <= 2:
+    #     events.append(ESCAPED_DANGER)
 
     if old_feature_dict["neighbours_up"] == 2 and self_action == "UP":
         events.append(BLOCKED)
@@ -163,20 +167,27 @@ def game_events_occurred(self, old_game_state, self_action: str, new_game_state,
     elif old_feature_dict["neighbours_left"] == 2 and self_action == "LEFT":
         events.append(BLOCKED)
 
-    if old_feature_dict["game_mode"] == 1:
+    if old_feature_dict["game_mode"] == 0:
+        # if "CRATE_DESTROYED" not in events:
+        # events.append(NO_CRATE_DESTROYED)
+        pass
+    elif old_feature_dict["game_mode"] == 1:
         if "CRATE_DESTROYED" not in events:
             events.append(NO_CRATE_DESTROYED)
-    elif old_feature_dict["game_mode"] == 1:
+        pass
+    elif old_feature_dict["game_mode"] == 2:
         pass
 
-    if old_feature_dict["neighbours_up"] == 0 and self_action == "UP":
-        events.append(SAFE_WAY)
-    elif old_feature_dict["neighbours_down"] == 0 and self_action == "DOWN":
-        events.append(SAFE_WAY)
-    elif old_feature_dict["neighbours_right"] == 0 and self_action == "RIGHT":
-        events.append(SAFE_WAY)
-    elif old_feature_dict["neighbours_left"] == 0 and self_action == "LEFT":
-        events.append(SAFE_WAY)
+    if old_feature_dict["neighbours_up"] == 1 and self_action == "UP":
+        events.append(FOLLOWED_PATH)
+    elif old_feature_dict["neighbours_down"] == 1 and self_action == "DOWN":
+        events.append(FOLLOWED_PATH)
+    elif old_feature_dict["neighbours_right"] == 1 and self_action == "RIGHT":
+        events.append(FOLLOWED_PATH)
+    elif old_feature_dict["neighbours_left"] == 1 and self_action == "LEFT":
+        events.append(FOLLOWED_PATH)
+    else:
+        events.append(NOT_FOLLOWED_PATH)
 
     self.logger.debug(f'Old coords: {old_game_state["self"][3]}')
     self.logger.debug(f'New coords: {new_game_state["self"][3]}')
@@ -273,20 +284,20 @@ def reward_from_events(self, events: List[str]) -> int:
     """
 
     game_rewards = {
-        e.BOMB_DROPPED: 10,  # adjust aggressiveness
+        e.BOMB_DROPPED: 25,  # adjust aggressiveness
         # # e.BOMB_EXPLODED: 0,
-        e.COIN_COLLECTED: 0,  # 50,
+        e.COIN_COLLECTED: 50,
         # # e.COIN_FOUND: 5,  # direct consequence from crate destroyed, redundant reward?
-        e.WAITED: 0,  # -3,  # adjust passivity
+        e.WAITED: -3,  # adjust passivity
         e.CRATE_DESTROYED: 5,
-        e.GOT_KILLED: 0,  # -50,  # adjust passivity
-        e.KILLED_OPPONENT: 0,  # 200,
-        e.KILLED_SELF: -40,  # you dummy --- this *also* triggers GOT_KILLED
+        e.GOT_KILLED: -50,  # adjust passivity
+        e.KILLED_OPPONENT: 200,
+        e.KILLED_SELF: -25,  # you dummy --- this *also* triggers GOT_KILLED
         # e.OPPONENT_ELIMINATED: 0.05,  # good because less danger or bad because other agent scored points?
         # # e.SURVIVED_ROUND: 0,  # could possibly lead to not being active - actually penalize if agent too passive?
         # # necessary? (maybe for penalizing trying to move through walls/crates) - yes, seems to be necessary to
         # # learn that one cannot place a bomb after another placed bomb is still not exploded
-        e.INVALID_ACTION: 0,  # -10,
+        e.INVALID_ACTION: -10,
         # WAS_BLOCKED: -20,
         # MOVED: -0.1,
         # PROGRESSED: 10,  # higher?
@@ -295,8 +306,8 @@ def reward_from_events(self, events: List[str]) -> int:
         # SUICIDAL: -15,
         # AGRESSIVE: 8,
         # SCARED: -9,
-        # ESCAPED_DANGER: 25,
-        # FOLLOWED_DANGER: -30,
+        ESCAPED_DANGER: 50,
+        FOLLOWED_DANGER: -75,
         # DECREASED_DISTANCE: 8,
         # INCREASED_DISTANCE: -8.1,  # higher? lower? idk
         # INCREASED_SURROUNDING_CRATES: 1.5,
@@ -305,18 +316,18 @@ def reward_from_events(self, events: List[str]) -> int:
         # DECREASED_BOMB_DISTANCE: -5.1,
         # FOLLOWED_DIRECTION: 5,  # possibly create penalty
         # NOT_FOLLOWED_DIRECTION: -6,
-        # FOLLOWED_PATH: 22,
-        # NOT_FOLLOWED_PATH: -35,
+        # FOLLOWED_PATH: 13,
+        # NOT_FOLLOWED_PATH: -20,
         # FOLLOWED_BOMB_DIRECTION: 25,
         # NOT_FOLLOWED_BOMB_DIRECTION: -50,
-        # DROPPED_BAD_BOMB: -100,
+        DROPPED_BAD_BOMB: -100,
         # DROPPED_UNNECESSARY_BOMB: -100,
         # TARGETED_ENEMY: 30,
         # BLOCKED: -100,
         # SAFE_WAY: -0.001,
-        # TARGETED_MANY_CRATES: 15,
-        # TARGETED_SOME_CRATES: 7.5,
-        # NO_CRATE_DESTROYED: -15,
+        TARGETED_MANY_CRATES: 15,
+        TARGETED_SOME_CRATES: 7.5,
+        NO_CRATE_DESTROYED: -10,
     }
 
     reward_sum = 0
