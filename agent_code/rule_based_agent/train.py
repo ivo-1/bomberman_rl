@@ -10,8 +10,13 @@ from .callbacks import state_to_features
 
 # This is only an example!
 Transition = namedtuple("Transition", ("state", "action", "reward"))  # "next_state"
+ACTIONS = ["UP", "RIGHT", "DOWN", "LEFT", "WAIT", "BOMB"]
 
-# global trajectories_over_episodes
+
+def _one_hot_encode(x) -> np.array:
+    encoded = np.zeros(len(ACTIONS))
+    encoded[x] = 1
+    return encoded
 
 
 def setup_training(self):
@@ -57,7 +62,7 @@ def game_events_occurred(
     self.episode_trajectory.append(
         Transition(
             state_to_features(self, old_game_state),
-            self_action,
+            _one_hot_encode(ACTIONS.index(self_action)),
             reward_from_events(self, events),
         )  # state_to_features(self, new_game_state), new game state shouldn't be necessary
     )
@@ -80,7 +85,7 @@ def end_of_round(self, last_game_state: dict, last_action: str, events: List[str
     self.episode_trajectory.append(
         Transition(
             state_to_features(self, last_game_state),
-            last_action,
+            _one_hot_encode(ACTIONS.index(last_action)),
             reward_from_events(self, events),
         )
     )
