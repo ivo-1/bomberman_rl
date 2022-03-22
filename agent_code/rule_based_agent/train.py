@@ -1,4 +1,3 @@
-from collections import namedtuple
 from datetime import datetime
 from typing import List
 
@@ -8,8 +7,6 @@ import events as e
 
 from .callbacks import state_to_features
 
-# This is only an example!
-Transition = namedtuple("Transition", ("state", "action", "reward"))  # "next_state"
 ACTIONS = ["UP", "RIGHT", "DOWN", "LEFT", "WAIT", "BOMB"]
 
 
@@ -58,9 +55,13 @@ def game_events_occurred(
         f'Encountered game event(s) {", ".join(map(repr, events))} in step {new_game_state["step"]}'
     )
 
+    if self_action is None:
+        self.logger.debug("Only happens when invalid action was chosen")
+        self_action = "WAIT"  # this is the result of an invalid action
+
     # state_to_features is defined in callbacks.py
     self.episode_trajectory.append(
-        Transition(
+        (
             state_to_features(self, old_game_state),
             _one_hot_encode(ACTIONS.index(self_action)),
             reward_from_events(self, events),
@@ -82,8 +83,13 @@ def end_of_round(self, last_game_state: dict, last_action: str, events: List[str
     :param self: The same object that is passed to all of your callbacks.
     """
     self.logger.debug(f'Encountered event(s) {", ".join(map(repr, events))} in final step')
+
+    if last_action is None:
+        self.logger.debug("Only happens when invalid action was chosen")
+        last_action = "WAIT"  # this is the result of an invalid action
+
     self.episode_trajectory.append(
-        Transition(
+        (
             state_to_features(self, last_game_state),
             _one_hot_encode(ACTIONS.index(last_action)),
             reward_from_events(self, events),
@@ -103,7 +109,10 @@ def end_of_round(self, last_game_state: dict, last_action: str, events: List[str
         print("Average trajectory length:\n")
         print(np.average([len(trajectory) for trajectory in trajectories]))
 
-        np.save(f"trajectories_{self.timestamp}", trajectories)
+        np.save(
+            f"../coli_agent_offline/decision_transformer/trajectories/trajectories_{self.timestamp}",
+            trajectories,
+        )
 
     self.episode_trajectory = []  # reset episode trajectory
     self.episode += 1
