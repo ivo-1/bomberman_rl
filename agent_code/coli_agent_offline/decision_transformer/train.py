@@ -17,8 +17,6 @@ from models.decision_transformer import DecisionTransformer
 # from decision_transformer.training.act_trainer import ActTrainer
 # from decision_transformer.training.seq_trainer import SequenceTrainer
 
-# TODO: load last 4 trajectories into one?
-
 # TODO: remove this function once _get_rewards_to_go is implemented
 def discount_cumsum(x, gamma=1.0):
     discount_cumsum = np.zeros_like(x)
@@ -72,7 +70,9 @@ def main(variant):
 
     trajectory_lens, returns = np.array(trajectory_lens), np.array(returns)
 
-    # TODO: input normalization needed?
+    # for input normalization (later)
+    # states = np.concatenate(states, axis=0)
+    # state_mean, state_std = np.mean(states, axis=0), np.std(states, axis=0) + 1e-6
 
     num_timesteps = sum(trajectory_lens)
     num_trajectories = len(trajectory_lens)  # we don't do any top-k %, so just take all
@@ -130,8 +130,7 @@ def main(variant):
                 )
             )
 
-            # NOTE: no vstack needed here
-            # NOTE: MUST be converted to int!
+            # NOTE: no vstack needed here and MUST be converted to int!
             rewards.append(
                 trajectory[:, 2][rng_offset : rng_offset + max_len].astype(int).reshape(1, -1, 1)
             )  # NOTE: this might have to stay a reshape and not an expand_dim
@@ -195,10 +194,17 @@ def main(variant):
 
             # TODO: left-padding done/terminals - skip for now
 
-            # left-padding rewards_to_go with zero reward-to-go and TODO: normalize with scale
-            return_to_go[-1] = np.concatenate(
-                [np.zeros((1, max_len - sequence_len, 1)), return_to_go[-1]], axis=1
-            )  # / scale
+            # left-padding rewards_to_go with zero reward-to-go
+            # authors divide the returns to go with `scale` -- as per issue #32 in their repo:
+            # > "scale is a normalization hyperparmeter, coarsely chosen so that the rewards would
+            # > fall somewhere in the range 0-10.
+            #
+            # as the max score in Bomberman is (3*5)+9 = 24
+            # we will divide by 2.5 per default
+            return_to_go[-1] = (
+                np.concatenate([np.zeros((1, max_len - sequence_len, 1)), return_to_go[-1]], axis=1)
+                / variant["scale"]
+            )
 
             # left-padding timesteps with zeros
             timesteps[-1] = np.concatenate(
@@ -245,7 +251,7 @@ def main(variant):
         return states, actions, rewards, return_to_go, timesteps, mask
 
     # for testing
-    s, a, r, rtg, t, mask = get_batch(batch_size=8, max_len=50)
+    # s, a, r, rtg, t, mask = get_batch(batch_size=8, max_len=50)
     # print(s)
     # print(a)
     # print(r)
@@ -331,6 +337,9 @@ if __name__ == "__main__":
     parser.add_argument("--num_eval_episodes", type=int, default=100)
     parser.add_argument("--max_iters", type=int, default=10)
     parser.add_argument("--num_steps_per_iter", type=int, default=10000)
+    parser.add_argument(
+        "--scale", type=float, default=2.5
+    )  # how much the rewards are scaled s.t. they fall into range [0, 10]
     parser.add_argument("--device", type=str, default="cpu")  # FIXME: "cuda" if we train on cluster
 
     args = parser.parse_args()
