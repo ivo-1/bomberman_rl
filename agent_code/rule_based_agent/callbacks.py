@@ -84,16 +84,16 @@ def setup(self):
     self.radius = 3  # how much the radius for the feature vector should be
     self.board_size = self.radius * 2 + 1
     self.field_state_to_idx = {
-        "free": 0,
-        "wall": 1,
-        "crate": 2,
-        "coin": 3,
-        "coin_in_explosion": 4,
-        "explosion": 5,
-        "agent_bomb_possible": 6,
-        "agent_bomb_not_possible": 7,
-        "agent_on_own_bomb": 8,
-        "bomb": 9,
+        "free": 1,
+        "wall": 2,
+        "crate": 3,
+        "coin": 4,
+        "coin_in_explosion": 5,
+        "explosion": 6,
+        "agent_bomb_possible": 7,
+        "agent_bomb_not_possible": 8,
+        "agent_on_own_bomb": 9,
+        "bomb": 10,
     }
     self.idx_to_field = {}
 
@@ -262,16 +262,16 @@ def state_to_features(self, game_state) -> np.array:
     Out of board coordinates are represented as walls (feature value 1).
 
     field to value:
-        0: free
-        1: wall
-        2: crate
-        3: coin
-        4: coin which is in an explosion
-        5: explosion (without coin on it)
-        6: agent that can place a bomb
-        7: agent that can't place a bomb
-        8: agent that's standing on a bomb (i.e. his own bomb)
-        9: bomb (without agent standing on it)
+        1: free
+        2: wall
+        3: crate
+        4: coin
+        5: coin which is in an explosion
+        6: explosion (without coin on it)
+        7: agent that can place a bomb
+        8: agent that can't place a bomb
+        9: agent that's standing on a bomb (i.e. his own bomb)
+        10: bomb (without agent standing on it)
     """
     feature_vector = np.zeros(
         self.board_size ** 2, dtype=int

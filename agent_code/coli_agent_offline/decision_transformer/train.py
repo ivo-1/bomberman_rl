@@ -152,7 +152,12 @@ def main(variant):
 
             # there is exactly one more state seen in the current sequence than rewards in the current sequence
             # --> add one zero reward to go
-            # TODO: When does this happen?
+            # this happens when the current sampled sequence goes "over" the length of the trajectory its sampled from
+            # e.g. with max_len = 10
+            # trajectory has timesteps: [..., 128, 129]
+            # rng_offset happens to be: 125
+            # --> timesteps: 125, 126, ..., 134 are looked at (because max_len = 10) but of course
+            # there are no timesteps beyond 129 (later on this is padded)
             if return_to_go[-1].shape[1] <= states[-1].shape[1]:
                 return_to_go[-1] = np.concatenate(
                     [return_to_go[-1], np.zeros((1, 1, 1), dtype=int)], axis=1
@@ -163,7 +168,6 @@ def main(variant):
             # left-padding with zero states if our sequence is shorter than max_len
             # this happens when the offset is high and the rest of the trajectory till episode
             # finish is shorter than max_len
-            # (TODO: is the padding a problem? --> 0 means free for us which would suggest that we're on a free field)
             # --> probably safer to not encode any field state with 0, but rather start with one
             states[-1] = np.concatenate(
                 [np.zeros((1, max_len - sequence_len, state_dim), dtype=int), states[-1]], axis=1
@@ -231,7 +235,14 @@ def main(variant):
         # TODO: add done_idx
         return states, actions, rewards, return_to_go, timesteps, mask
 
-    get_batch(batch_size=8, max_len=50)
+    # for testing
+    s, a, r, rtg, t, mask = get_batch(batch_size=8, max_len=50)
+    # print(s)
+    # print(a)
+    # print(r)
+    # print(rtg)
+    # print(t)
+    print(mask)
     return
 
     model = DecisionTransformer(
