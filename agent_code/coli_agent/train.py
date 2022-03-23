@@ -39,6 +39,7 @@ TARGETED_SOME_CRATES = "TARGETED_SOME_CRATES"
 TARGETED_ENEMY = "TARGETED_ENEMY"
 
 BLOCKED = "BLOCKED"
+NOT_BLOCKED = "NOT_BLOCKED"
 
 
 def setup_training(self):
@@ -63,7 +64,6 @@ def game_events_occurred(self, old_game_state, self_action: str, new_game_state,
     (if features = ... -> events.append(OUR_EVENT)). But events can also be added independently of features,
     just using game state in general. Leveraging of features more just to avoid code duplication.
     """
-    self.history.append(new_game_state["self"][-1])
 
     old_state = self.old_state
     self.new_state = state_to_features(self, new_game_state)
@@ -79,14 +79,14 @@ def game_events_occurred(self, old_game_state, self_action: str, new_game_state,
         or old_feature_dict["in_enemy_zone"] != 0
     ):
         reward_coin_feature = False
-    # somestimes coin_direction is random and can, e.g., be an explosion
-    if old_feature_dict["coin_direction"] == "UP" and old_feature_dict["up"] != "BLOCKED":
+    # sometimes coin_direction is random and can, e.g., be an explosion
+    if old_feature_dict["coin_direction"] == "UP" and old_feature_dict["up"] == "BLOCKED":
         reward_coin_feature = False
-    if old_feature_dict["coin_direction"] == "DOWN" and old_feature_dict["down"] != "BLOCKED":
+    if old_feature_dict["coin_direction"] == "DOWN" and old_feature_dict["down"] == "BLOCKED":
         reward_coin_feature = False
-    if old_feature_dict["coin_direction"] == "RIGHT" and old_feature_dict["right"] != "BLOCKED":
+    if old_feature_dict["coin_direction"] == "RIGHT" and old_feature_dict["right"] == "BLOCKED":
         reward_coin_feature = False
-    if old_feature_dict["coin_direction"] == "LEFT" and old_feature_dict["left"] != "BLOCKED":
+    if old_feature_dict["coin_direction"] == "LEFT" and old_feature_dict["left"] == "BLOCKED":
         reward_coin_feature = False
 
     if reward_coin_feature is True:
@@ -96,33 +96,74 @@ def game_events_occurred(self, old_game_state, self_action: str, new_game_state,
             events.append(NOT_FOLLOWED_COIN_DIRECTION)
 
     if old_feature_dict["bomb_safety_direction"] != "CLEAR":
-        if self_action == old_feature_dict["bomb_safety_direction"]:
-            events.append(FOLLOWED_BOMB_DIRECTION)
-        else:
-            events.append(NOT_FOLLOWED_BOMB_DIRECTION)
+        reward_bomb_safety_feature = True
+        # sometimes bomb_safety_direction is random (when no way out) and can, e.g., be a wall
+        if (
+            old_feature_dict["bomb_safety_direction"] == "UP"
+            and old_feature_dict["up"] == "BLOCKED"
+        ):
+            reward_bomb_safety_feature = False
+        if (
+            old_feature_dict["bomb_safety_direction"] == "DOWN"
+            and old_feature_dict["down"] == "BLOCKED"
+        ):
+            reward_bomb_safety_feature = False
+        if (
+            old_feature_dict["bomb_safety_direction"] == "RIGHT"
+            and old_feature_dict["right"] == "BLOCKED"
+        ):
+            reward_bomb_safety_feature = False
+        if (
+            old_feature_dict["bomb_safety_direction"] == "LEFT"
+            and old_feature_dict["left"] == "BLOCKED"
+        ):
+            reward_bomb_safety_feature = False
+        if reward_bomb_safety_feature is True:
+            if old_feature_dict["bomb_safety_direction"] == self_action:
+                events.append(FOLLOWED_BOMB_DIRECTION)
+            else:
+                events.append(NOT_FOLLOWED_BOMB_DIRECTION)
 
     if old_feature_dict["safe_to_bomb"] == 0 and self_action == "BOMB":
         events.append(DROPPED_BAD_BOMB)
 
-    if old_feature_dict["safe_to_bomb"] == 1:
+    if (
+        old_feature_dict["safe_to_bomb"] == 1
+        and old_feature_dict["bomb_safety_direction"] == "CLEAR"
+    ):
         if self_action == "BOMB":
             if old_feature_dict["crate_priority"] == "HIGH":
                 events.append(TARGETED_MANY_CRATES)
             elif old_feature_dict["crate_priority"] == "LOW":
                 events.append(TARGETED_SOME_CRATES)
-            elif old_feature_dict["in_enemy_zone"] == 1:
+            if old_feature_dict["in_enemy_zone"] == 1:
                 events.append(TARGETED_ENEMY)
-            else:
+            if (
+                old_feature_dict["in_enemy_zone"] == 0
+                and old_feature_dict["crate_priority"] == "ZERO"
+            ):
                 events.append(DROPPED_UNNECESSARY_BOMB)
 
-    if old_feature_dict["up"] == "BLOCKED" and self_action == "UP":
-        events.append(BLOCKED)
-    elif old_feature_dict["down"] == "BLOCKED" and self_action == "DOWN":
-        events.append(BLOCKED)
-    elif old_feature_dict["right"] == "BLOCKED" and self_action == "RIGHT":
-        events.append(BLOCKED)
-    elif old_feature_dict["left"] == "BLOCKED" and self_action == "LEFT":
-        events.append(BLOCKED)
+    if self_action == "UP":
+        if old_feature_dict["up"] == "BLOCKED":
+            events.append(BLOCKED)
+        else:
+            events.append(NOT_BLOCKED)
+    if self_action == "DOWN":
+        if old_feature_dict["down"] == "BLOCKED":
+            events.append(BLOCKED)
+        else:
+            events.append(NOT_BLOCKED)
+    if self_action == "RIGHT":
+        if old_feature_dict["right"] == "BLOCKED":
+            events.append(BLOCKED)
+        else:
+            events.append(NOT_BLOCKED)
+    if self_action == "LEFT":
+        if old_feature_dict["left"] == "BLOCKED":
+            events.append(BLOCKED)
+        else:
+            events.append(NOT_BLOCKED)
 
     self.logger.debug(f'Old coords: {old_game_state["self"][3]}')
     self.logger.debug(f'New coords: {new_game_state["self"][3]}')
@@ -210,6 +251,7 @@ def end_of_round(self, last_game_state, last_action, events):
 
     self.rewards_of_episode = 0
     self.episode += 1
+    self.new_state = None
 
 
 def reward_from_events(self, events: List[str]) -> int:
@@ -226,24 +268,25 @@ def reward_from_events(self, events: List[str]) -> int:
         e.CRATE_DESTROYED: 0,
         e.GOT_KILLED: 0,
         e.KILLED_OPPONENT: 0,
-        # e.KILLED_SELF: -1000,  # this *also* triggers GOT_KILLED
+        # e.KILLED_SELF: -500,  # this *also* triggers GOT_KILLED
         e.OPPONENT_ELIMINATED: 0,
         e.SURVIVED_ROUND: 0,
         e.INVALID_ACTION: 0,
-        # FOLLOWED_COIN_DIRECTION: 15,
-        # NOT_FOLLOWED_COIN_DIRECTION: -20,
-        FOLLOWED_BOMB_DIRECTION: 25,
-        NOT_FOLLOWED_BOMB_DIRECTION: -50,
+        FOLLOWED_COIN_DIRECTION: 75,
+        NOT_FOLLOWED_COIN_DIRECTION: -100,
+        FOLLOWED_BOMB_DIRECTION: 50,
+        NOT_FOLLOWED_BOMB_DIRECTION: -100,
         DROPPED_BAD_BOMB: -100,
         DROPPED_UNNECESSARY_BOMB: -75,
         TARGETED_MANY_CRATES: 50,
         TARGETED_SOME_CRATES: 10,
-        # TARGETED_ENEMY: 30,
+        TARGETED_ENEMY: 100,
         BLOCKED: -100,
-        # e.MOVED_DOWN: 25,
-        # e.MOVED_LEFT: 25,
-        # e.MOVED_RIGHT: 25,
-        # e.MOVED_UP: 25
+        # NOT_BLOCKED: 10,
+        # e.MOVED_DOWN: 2.5,
+        # e.MOVED_LEFT: 2.5,
+        # e.MOVED_RIGHT: 2.5,
+        # e.MOVED_UP: 2.5
     }
 
     reward_sum = 0

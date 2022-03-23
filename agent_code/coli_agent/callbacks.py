@@ -1,7 +1,6 @@
 import glob
 import itertools
 import os
-from collections import deque
 from copy import deepcopy
 from datetime import datetime
 from typing import List, Tuple
@@ -25,11 +24,9 @@ def setup(self):
     """Sets up everything. (First call)"""
 
     self.new_state = None
-    self.history = deque(maxlen=5)  # tiles visited
     self.lattice_graph = nx.grid_2d_graph(m=COLS, n=ROWS)
     self.previous_distance = 0
     self.current_distance = 0
-    self.explosions = set()
     self.state_list = list_possible_states()
 
     # for plotting
@@ -194,7 +191,11 @@ def _get_surrounding_tiles(own_coord, n) -> List[Coordinate]:
     own_coord_y = own_coord[1]
     neighboring_coordinates = []
     for x in range(0, n + 1):  # x = 2
+        if x > 15:
+            break
         for y in range(0, n + 1 - x):
+            if y > 15:
+                break
             neighboring_coordinates.append((own_coord_x + x, own_coord_y + y))
             neighboring_coordinates.append((own_coord_x + x, own_coord_y - y))
             neighboring_coordinates.append((own_coord_x - x, own_coord_y + y))
@@ -634,14 +635,14 @@ def bomb_safety_direction_feature(self, game_state) -> Action:
     ):  # agent is not in any future explosion zone of bomb
         return "CLEAR"
 
-    bomb_explosion_tiles = [
+    bomb_explosion_tiles = {
         own_position
-    ]  # on which tiles will there be an explosion? (always incudes self, otherwise would be CLEAR)
-    reach = 4  # how far we can still go before most urgent bomb blows up
+    }  # on which tiles will there be an explosion? (always includes self, otherwise would be CLEAR)
+    reach = 5  # how far we can still go before most urgent bomb blows up
     for bomb in game_state["bombs"]:
-        bomb_explosion_tiles += get_neighboring_tiles_until_wall(bomb[0], 3, game_state)
-        if bomb[1] + 1 < reach:
-            reach = bomb[1] + 1
+        bomb_explosion_tiles.update(get_neighboring_tiles_until_wall(bomb[0], 3, game_state))
+        if bomb[1] + 2 < reach:
+            reach = bomb[1] + 2
 
     graph = _get_graph(self, game_state)
     available_neighbors = _get_surrounding_tiles(own_position, reach)
@@ -649,7 +650,9 @@ def bomb_safety_direction_feature(self, game_state) -> Action:
     shortest_path = None
     shortest_distance = 1000  # arbitrary high number
     for n in available_neighbors:
-        if n not in graph or n in bomb_explosion_tiles:
+        if n not in graph:
+            continue
+        if n in bomb_explosion_tiles:
             continue
         try:
             current_shortest_path, current_shortest_distance = _find_shortest_path(
@@ -664,7 +667,7 @@ def bomb_safety_direction_feature(self, game_state) -> Action:
     if not shortest_path:
         return "NO_WAY_OUT"  # gets converted into random action for bomb_safety_direction feature
 
-    self.logger.debug(f"There is a bomb safety goal and the next step is: {shortest_path[1]}")
+    self.logger.debug(f"There is a bomb safety goal and the path to it is {shortest_path}")
 
     return _get_action(self, own_position, shortest_path)
 
@@ -680,7 +683,7 @@ def safe_to_bomb_feature(self, original_game_state) -> int:
 
     # if there was a bomb in current self position, would there be an escape route?
     altered_game_state = deepcopy(original_game_state)
-    altered_game_state["bombs"].append((original_game_state["self"][-1], 4))
+    altered_game_state["bombs"].append((original_game_state["self"][-1], 3))
     if bomb_safety_direction_feature(self, altered_game_state) == "NO_WAY_OUT":
         return 0
 
@@ -688,38 +691,40 @@ def safe_to_bomb_feature(self, original_game_state) -> int:
 
 
 def blockage_feature(self, game_state: dict) -> List[int]:
+    results = ["FREE", "FREE", "FREE", "FREE"]
     own_position = game_state["self"][-1]
     enemy_positions = [enemy[-1] for enemy in game_state["others"]]
-    results = ["FREE", "FREE", "FREE", "FREE"]
-    explosion = False
+    bomb_positions = []
+    imminent_explosions = set()
+
+    for bomb in game_state["bombs"]:
+        bomb_positions.append(bomb[0])
+        if bomb[1] == 0:
+            future_explosion = get_neighboring_tiles_until_wall(bomb[0], 3, game_state)
+            future_explosion += bomb[0]
+            imminent_explosions.update(future_explosion)
 
     for i, neighboring_coord in enumerate(_get_neighboring_tiles(own_position, 1)):
+        explosion_present = False
+        bomb_present = False
         neighboring_x, neighboring_y = neighboring_coord
         neighboring_content = game_state["field"][neighboring_x][
             neighboring_y
         ]  # content of tile, e.g. crate=1
-        if neighboring_coord in self.explosions:
-            explosion = True
-            self.explosions.remove(neighboring_coord)
-        for bomb in game_state["bombs"]:
-            if bomb[0] == neighboring_coord:
-                ripe_bomb = True
-                if bomb[1] == 0:
-                    future_explosion = get_neighboring_tiles_until_wall(
-                        neighboring_coord, 3, game_state
-                    )
-                    future_explosion += neighboring_coord
-                    self.explosions.update(future_explosion)
+        if neighboring_coord in bomb_positions:
+            bomb_present = True
+        if neighboring_coord in imminent_explosions:
+            explosion_present = True
         if game_state["explosion_map"][neighboring_x][neighboring_y] != 0:
-            explosion = True
-        ripe_bomb = False  # "ripe" = about to explode
+            explosion_present = True
         if (
             neighboring_content != 0
             or neighboring_coord in enemy_positions
-            or explosion
-            or ripe_bomb
+            or explosion_present
+            or bomb_present
         ):
             results[i] = "BLOCKED"
+
     return results
 
 
