@@ -17,17 +17,6 @@ from models.decision_transformer import DecisionTransformer
 # from decision_transformer.training.act_trainer import ActTrainer
 # from decision_transformer.training.seq_trainer import SequenceTrainer
 
-# TODO: remove this function once _get_rewards_to_go is implemented
-def discount_cumsum(x, gamma=1.0):
-    discount_cumsum = np.zeros_like(x)
-    discount_cumsum[-1] = x[-1]
-    for t in reversed(range(x.shape[0] - 1)):
-        # print(t)
-        # print(x[t], discount_cumsum[t + 1])
-        discount_cumsum[t] = x[t] + gamma * discount_cumsum[t + 1]
-        # print(discount_cumsum[t], '\n')
-    return discount_cumsum
-
 
 def _get_rewards_to_go(x: np.array) -> np.array:
     """
@@ -154,7 +143,7 @@ def main(variant):
             )  # e.g. timesteps [[399, 400, 401, 402]] ==> [[399, 400, 400, 400]] when max_ep_len = 401 (1, length_of_trajectory)
 
             # all future rewards (even over max_len) so that the calculation of returns to go is correct
-            rewards_to_go_from_offset = discount_cumsum(
+            rewards_to_go_from_offset = _get_rewards_to_go(
                 trajectory[:, 2][rng_offset:]
             )  # (length_of_trajectory from cutoff til end,)
 
