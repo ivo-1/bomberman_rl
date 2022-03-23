@@ -1,5 +1,7 @@
 # don't confuse with train.py files used for --train; we don't do online RL
 import argparse
+import glob
+import os
 import pickle
 import random
 import sys
@@ -15,10 +17,8 @@ from models.decision_transformer import DecisionTransformer
 # from decision_transformer.training.act_trainer import ActTrainer
 # from decision_transformer.training.seq_trainer import SequenceTrainer
 
-# TODO: load last 4 trajectories into one?
-
 # TODO: remove this function once _get_rewards_to_go is implemented
-def discount_cumsum(x, gamma):
+def discount_cumsum(x, gamma=1.0):
     discount_cumsum = np.zeros_like(x)
     discount_cumsum[-1] = x[-1]
     for t in reversed(range(x.shape[0] - 1)):
@@ -43,7 +43,6 @@ def _get_rewards_to_go(x: np.array) -> np.array:
         r[i + 1] = (
             r[i] - x[i]
         )  # compute next value in rewards_to_go by subtracting next val in x from current val in rewards_to_go
-
     return r
 
 
@@ -54,9 +53,19 @@ def main(variant):
     state_dim = 49
     action_dim = 6
 
-    # load dataset
-    # [[(s, a, r), (s, a, r)], [(s, a, r,), (s, a, r), (s, a, r)]] <-- two trajectories
-    trajectories = np.load("trajectories/trajectories_2022-03-22T12:55:28:880375.npy")
+    # load dataset by combining trajectory files (every agent has its own
+    # trajectory file that is generated during training) --> multiple files
+
+    # find all trajectories in trajectories folder
+    list_of_trajectories = glob.glob("trajectories/*.npy")
+    # list_of_trajectories.sort(key=os.path.getctime) # sort by creation time
+
+    print(f"Found the following trajectory files: {list_of_trajectories}")
+    agent_trajectories = []
+    for agent_trajectory in list_of_trajectories:
+        agent_trajectories.append(np.load(agent_trajectory, allow_pickle=True))
+
+    trajectories = np.concatenate(agent_trajectories)
 
     # save trajectories into separate lists
     states, trajectory_lens, returns = [], [], []
@@ -67,7 +76,9 @@ def main(variant):
 
     trajectory_lens, returns = np.array(trajectory_lens), np.array(returns)
 
-    # TODO: input normalization needed?
+    # for input normalization (later)
+    # states = np.concatenate(states, axis=0)
+    # state_mean, state_std = np.mean(states, axis=0), np.std(states, axis=0) + 1e-6
 
     num_timesteps = sum(trajectory_lens)
     num_trajectories = len(trajectory_lens)  # we don't do any top-k %, so just take all
@@ -83,8 +94,7 @@ def main(variant):
     # num_eval_episodes = variant['num_eval_episodes']
     # pct_traj = variant.get('pct_traj', 1.)
 
-    # TODO: is N usually the trajectory length or the number of episodes?
-    def get_batch(batch_size=256, max_len=K):  # TODO: why not batch_size=batch_size?
+    def get_batch(batch_size=batch_size, max_len=K):
 
         # get batch_size=256 random trajectory indices
         trajectory_idx = np.random.choice(
@@ -103,38 +113,158 @@ def main(variant):
 
         # construct one batch
         for trajectory_index in trajectory_idx:
-            trajectory = trajectories[trajectory_index]  # current trajectory
+            trajectory = trajectories[
+                trajectory_index
+            ]  # current trajectory: [length_of_trajectory, 3]
 
             # get random int in [0, traj_len=10 - 1] ==> get random sequences from trajectory (obeying max_len)
             rng_offset = random.randint(0, trajectory[:, 0].shape[0] - 1)
 
             # the reshapes are just torch unsqueezes but with numpy, i.e. shape: [2, 6] --> [1, 2, 6]
             # -1 just means inferring the one that's left over
-            assert np.expand_dims(
-                trajectory[:, 0][rng_offset : rng_offset + max_len], axis=0
-            ) == trajectory[:, 0][rng_offset : rng_offset + max_len].reshape(1, -1, state_dim)
+            # assert np.expand_dims(
+            #     trajectory[:, 0][rng_offset : rng_offset + max_len], axis=0
+            # ) == trajectory[:, 0][rng_offset : rng_offset + max_len].reshape(1, -1, state_dim)
             states.append(
-                trajectory[:, 0][rng_offset : rng_offset + max_len].reshape(1, -1, state_dim)
+                np.vstack(trajectory[:, 0][rng_offset : rng_offset + max_len]).reshape(
+                    1, -1, state_dim
+                )  # (1, length_of_trajectory chosen, 49)
             )
             actions.append(
-                trajectory[:, 1][rng_offset : rng_offset + max_len].reshape(1, -1, action_dim)
+                np.vstack(trajectory[:, 1][rng_offset : rng_offset + max_len]).reshape(
+                    1, -1, action_dim
+                )
             )
+
+            # NOTE: no vstack needed here and MUST be converted to int!
             rewards.append(
-                trajectory[:, 2][rng_offset : rng_offset + max_len].reshape(1, -1, 1)
+                trajectory[:, 2][rng_offset : rng_offset + max_len].astype(int).reshape(1, -1, 1)
             )  # NOTE: this might have to stay a reshape and not an expand_dim
 
             # TODO: do we need 'terminals' or 'dones'?
             # "done signal, equal to 1 if playing the corresponding action in the state should terminate the episode"
 
             timesteps.append(
-                np.arange(rng_offset, rng_offset + states[-1].shape[1]).reshape(1, -1)
+                np.arange(rng_offset, rng_offset + states[-1].shape[1]).reshape(
+                    1, -1
+                )  # [1, length_of_trajectory]
             )  # e.g. append [[399, 400, 401, 402]]
             timesteps[-1][timesteps[-1] >= max_ep_len] = (
                 max_ep_len - 1
-            )  # e.g. timesteps [399, 400, 401, 402] ==> [399, 400, 400, 400]
+            )  # e.g. timesteps [[399, 400, 401, 402]] ==> [[399, 400, 400, 400]] when max_ep_len = 401 (1, length_of_trajectory)
 
-            # TODO: everything beyond line 141
-            # returns_to_go
+            # all future rewards (even over max_len) so that the calculation of returns to go is correct
+            rewards_to_go_from_offset = discount_cumsum(
+                trajectory[:, 2][rng_offset:]
+            )  # (length_of_trajectory from cutoff til end,)
+
+            # append only max_len allowed sequence
+            # NOTE: must be cast!
+            return_to_go.append(
+                rewards_to_go_from_offset[: states[-1].shape[1] + 1].astype(int).reshape(1, -1, 1)
+            )  # (1, length_of_trajectory, 1)
+
+            # there is exactly one more state seen in the current sequence than rewards in the current sequence
+            # --> add one zero reward to go
+            # this happens when the current sampled sequence goes "over" the length of the trajectory its sampled from
+            # e.g. with max_len = 10
+            # trajectory has timesteps: [..., 128, 129]
+            # rng_offset happens to be: 125
+            # --> timesteps: 125, 126, ..., 134 are looked at (because max_len = 10) but of course
+            # there are no timesteps beyond 129 (later on this is padded)
+            if return_to_go[-1].shape[1] <= states[-1].shape[1]:
+                return_to_go[-1] = np.concatenate(
+                    [return_to_go[-1], np.zeros((1, 1, 1), dtype=int)], axis=1
+                )
+
+            sequence_len = states[-1].shape[1]
+
+            # left-padding with zero states if our sequence is shorter than max_len
+            # this happens when the offset is high and the rest of the trajectory till episode
+            # finish is shorter than max_len
+            # --> probably safer to not encode any field state with 0, but rather start with one
+            states[-1] = np.concatenate(
+                [np.zeros((1, max_len - sequence_len, state_dim), dtype=int), states[-1]], axis=1
+            )
+            # TODO: normalization  - skip for now
+
+            # left-padding with dummy action (not one-hot encoded, but just whole vector -10)
+            actions[-1] = np.concatenate(
+                [np.ones((1, max_len - sequence_len, action_dim)) * -10, actions[-1]], axis=1
+            )
+
+            # left-padding reward with 0 rewards
+            rewards[-1] = np.concatenate(
+                [np.zeros((1, max_len - sequence_len, 1)), rewards[-1]], axis=1
+            )
+
+            # TODO: left-padding done/terminals - skip for now
+
+            # left-padding rewards_to_go with zero reward-to-go
+            # authors divide the returns to go with `scale` -- as per issue #32 in their repo:
+            # > "scale is a normalization hyperparmeter, coarsely chosen so that the rewards would
+            # > fall somewhere in the range 0-10.
+            #
+            # as the max score in Bomberman is (3*5)+9 = 24
+            # we will divide by 2.5 per default
+            return_to_go[-1] = (
+                np.concatenate([np.zeros((1, max_len - sequence_len, 1)), return_to_go[-1]], axis=1)
+                / variant["scale"]
+            )
+
+            # left-padding timesteps with zeros
+            timesteps[-1] = np.concatenate(
+                [np.zeros((1, max_len - sequence_len)), timesteps[-1]], axis=1
+            )
+
+            # masking the fake tokens (the left-paddings), i.e. [0, 0, 1, 1, 1] if max_len-sequence_len == 2
+            mask.append(
+                np.concatenate(
+                    [np.zeros((1, max_len - sequence_len)), np.ones((1, sequence_len))], axis=1
+                )
+            )
+
+        # print(len(states)) # batch_size because we have batch_size sequences in the batch
+        # print(states[0].shape) # (1, max_len, state_dim)
+        # print(states[0].dtype) # int64
+
+        # concatenate all the stuff of all the sequences in the batch to be behind each other and prepare them to be sent to torch
+        states = torch.from_numpy(np.concatenate(states, axis=0)).to(
+            dtype=torch.float32, device=device
+        )
+
+        actions = torch.from_numpy(np.concatenate(actions, axis=0)).to(
+            dtype=torch.float32, device=device
+        )
+
+        # print(len(rewards))
+        # print(rewards[0].shape) # (1, 50, 1) == (1, max_len, reward_dim (i.e. it's a number --> 1))
+        # print(rewards[0].dtype)
+
+        rewards = torch.from_numpy(np.concatenate(rewards, axis=0)).to(
+            dtype=torch.float32, device=device
+        )
+        # done_idx = torch.from_numpy(np.concatenate(done_idx, axis=0)).to(dtype=torch.long, device=device)
+        return_to_go = torch.from_numpy(np.concatenate(return_to_go, axis=0)).to(
+            dtype=torch.float32, device=device
+        )
+        timesteps = torch.from_numpy(np.concatenate(timesteps, axis=0)).to(
+            dtype=torch.long, device=device
+        )
+        mask = torch.from_numpy(np.concatenate(mask, axis=0)).to(dtype=torch.int, device=device)
+
+        # TODO: add done_idx
+        return states, actions, rewards, return_to_go, timesteps, mask
+
+    # for testing
+    # s, a, r, rtg, t, mask = get_batch(batch_size=8, max_len=50)
+    # print(s)
+    # print(a)
+    # print(r)
+    # print(rtg)
+    # print(t)
+    # print(mask)
+    # return
 
     model = DecisionTransformer(
         state_dim=state_dim,
@@ -150,6 +280,49 @@ def main(variant):
         resid_pdrop=variant["dropout"],
         attn_pdrop=variant["dropout"],
     )
+
+    model.to(device)
+
+    warmup_steps = variant["warmup_steps"]
+    optimizer = torch.optim.AdamW(
+        model.parameters(),
+        lr=variant["learning_rate"],
+        weight_decay=variant["weight_decay"],
+    )
+
+    # this adjusts the learning rate as follows:
+    # let's say there are 100 warmup_steps, and learning_rate is 0.5
+    # then the learning rate will be:
+    # 0th step: 0.05
+    # 1st step: 0.06
+    # 2nd step: 0.07
+    # ...
+    # 100th step: 0.5
+    # 101st step: 0.5
+    # 102nd step: 0.5
+    #
+    # The authors *do not* decay the learning rate in their OpenAI Gym experiments after the warmup steps!
+    # They only use cosine decay for their ATARI experiments
+    scheduler = torch.optim.lr_scheduler.LambdaLR(
+        optimizer, lambda steps: min((steps + 1) / warmup_steps, 1)
+    )
+
+    trainer = Trainer(
+        model=model,
+        optimizer=optimizer,
+        batch_size=batch_size,
+        get_batch=get_batch,
+        scheduler=scheduler,
+        loss_fn=lambda s_hat, a_hat, r_hat, s, a, r: torch.mean(
+            (a_hat - a) ** 2
+        ),  # cross-entropy loss
+    )
+
+    # actual training loop
+    for iteration in range(variant["max_iters"]):
+        outputs = trainer.train_iteration(
+            num_steps=variant["num_steps_per_iter"], iter_num=iteration + 1, print_logs=True
+        )
 
 
 if __name__ == "__main__":
@@ -170,23 +343,10 @@ if __name__ == "__main__":
     parser.add_argument("--num_eval_episodes", type=int, default=100)
     parser.add_argument("--max_iters", type=int, default=10)
     parser.add_argument("--num_steps_per_iter", type=int, default=10000)
-    parser.add_argument("--device", type=str, default="cuda")
+    parser.add_argument(
+        "--scale", type=float, default=2.5
+    )  # how much the rewards are scaled s.t. they fall into range [0, 10]
+    parser.add_argument("--device", type=str, default="cpu")  # FIXME: "cuda" if we train on cluster
 
     args = parser.parse_args()
-
-    print(discount_cumsum(np.array([0, 0, 1, 0, 5, 0]), gamma=1.0))
-    print(discount_cumsum(np.array([0, 0, 1, 0, 5, 5]), gamma=1.0))
-    print(discount_cumsum(np.array([0, 0, 0, 0, 0, 0]), gamma=1.0))
-    print(discount_cumsum(np.array([1, 1, 1, 1, 1, 1]), gamma=1.0))
-    print(discount_cumsum(np.array([0, 5, 5, 5, 5, 5, 0]), gamma=1.0))
-    print(type(discount_cumsum(np.array([0, 5, 5, 5, 5, 5, 0]), gamma=1.0)))
-    print(discount_cumsum(np.array([0, 5, 5, 5, 5, 5, 0]), gamma=1.0).shape)
-
-    # main(variant=vars(args))
-    print(_get_rewards_to_go(np.array([0, 0, 1, 0, 5, 0])))
-    print(_get_rewards_to_go(np.array([0, 0, 1, 0, 5, 5])))
-    print(_get_rewards_to_go(np.array([0, 0, 0, 0, 0, 0])))
-    print(_get_rewards_to_go(np.array([1, 1, 1, 1, 1, 1])))
-    print(_get_rewards_to_go(np.array([0, 5, 5, 5, 5, 5, 0])))
-    print(type(_get_rewards_to_go(np.array([0, 5, 5, 5, 5, 5, 0]))))
-    print(_get_rewards_to_go(np.array([0, 5, 5, 5, 5, 5, 0])).shape)
+    main(variant=vars(args))
