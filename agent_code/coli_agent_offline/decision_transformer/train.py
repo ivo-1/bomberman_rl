@@ -22,22 +22,28 @@ def discount_cumsum(x, gamma):
     discount_cumsum = np.zeros_like(x)
     discount_cumsum[-1] = x[-1]
     for t in reversed(range(x.shape[0] - 1)):
+        # print(t)
+        # print(x[t], discount_cumsum[t + 1])
         discount_cumsum[t] = x[t] + gamma * discount_cumsum[t + 1]
+        # print(discount_cumsum[t], '\n')
     return discount_cumsum
 
 
 def _get_rewards_to_go(x: np.array) -> np.array:
     """
-
-
     [0, 0, 1, 0, 5, 0] --> [6, 6, 6, 5, 5, 0]
     [1, 1, 1, 1, 1, 1] --> [6, 5, 4, 3, 2, 1]
 
     (try out more examples in if __name__ == __main__ to see how this function should behave)
     """
-    returns_to_go = None  # TODO: this function
+    rewards_to_go = np.zeros_like(x)
+    rewards_to_go[0] = sum(x)  # take sum of array as first value
+    for i in range(len(rewards_to_go) - 1):
+        rewards_to_go[i + 1] = (
+            rewards_to_go[i] - x[i]
+        )  # compute next value in rewards_to_go by subtracting next val in x from current val in rewards_to_go
 
-    return returns_to_go
+    return rewards_to_go
 
 
 def main(variant):
@@ -173,3 +179,7 @@ if __name__ == "__main__":
     print(discount_cumsum(np.array([1, 1, 1, 1, 1, 1]), gamma=1.0))
 
     # main(variant=vars(args))
+    print(_get_rewards_to_go(np.array([0, 0, 1, 0, 5, 0])))
+    print(_get_rewards_to_go(np.array([0, 0, 1, 0, 5, 5])))
+    print(_get_rewards_to_go(np.array([0, 0, 0, 0, 0, 0])))
+    print(_get_rewards_to_go(np.array([1, 1, 1, 1, 1, 1])))
