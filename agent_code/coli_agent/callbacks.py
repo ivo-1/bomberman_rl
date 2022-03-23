@@ -39,7 +39,7 @@ def setup(self):
     self.game_scores_of_episodes = []
 
     # find latest q_table
-    list_of_q_tables = glob.glob("*.npy")  # * means all if need specific format then *.csv
+    list_of_q_tables = glob.glob("*.npy")
     self.latest_q_table_path = max(list_of_q_tables, key=os.path.getctime)
     # self.latest_q_table_path = "q_table-2022-03-14T162802-node45.npy"
     self.latest_q_table = np.load(self.latest_q_table_path)

@@ -1,5 +1,7 @@
 # don't confuse with train.py files used for --train; we don't do online RL
 import argparse
+import glob
+import os
 import pickle
 import random
 import sys
@@ -35,7 +37,7 @@ def _get_rewards_to_go(x: np.array) -> np.array:
 
     (try out more examples in if __name__ == __main__ to see how this function should behave)
     """
-    returns_to_go = None  # TODO: this function
+    returns_to_go = None
 
     return returns_to_go
 
@@ -47,11 +49,19 @@ def main(variant):
     state_dim = 49
     action_dim = 6
 
-    # load dataset
-    # [[(s, a, r), (s, a, r)], [(s, a, r,), (s, a, r), (s, a, r)]] <-- two trajectories
-    trajectories = np.load(
-        "trajectories/trajectories_2022-03-23T16:38:30:372286.npy", allow_pickle=True
-    )
+    # load dataset by combining trajectory files (every agent has its own
+    # trajectory file that is generated during training) --> multiple files
+
+    # find all trajectories in trajectories folder
+    list_of_trajectories = glob.glob("trajectories/*.npy")
+    # list_of_trajectories.sort(key=os.path.getctime) # sort by creation time
+
+    print(f"Found the following trajectory files: {list_of_trajectories}")
+    agent_trajectories = []
+    for agent_trajectory in list_of_trajectories:
+        agent_trajectories.append(np.load(agent_trajectory, allow_pickle=True))
+
+    trajectories = np.concatenate(agent_trajectories)
 
     # save trajectories into separate lists
     states, trajectory_lens, returns = [], [], []
@@ -78,8 +88,7 @@ def main(variant):
     # num_eval_episodes = variant['num_eval_episodes']
     # pct_traj = variant.get('pct_traj', 1.)
 
-    # TODO: is N usually the trajectory length or the number of episodes?
-    def get_batch(batch_size=256, max_len=K):  # TODO: why not batch_size=batch_size?
+    def get_batch(batch_size=batch_size, max_len=K):
 
         # get batch_size=256 random trajectory indices
         trajectory_idx = np.random.choice(
@@ -203,7 +212,7 @@ def main(variant):
                 )
             )
 
-        # print(len(states)) # batch_size because we have batchz_size sequences in the batch
+        # print(len(states)) # batch_size because we have batch_size sequences in the batch
         # print(states[0].shape) # (1, max_len, state_dim)
         # print(states[0].dtype) # int64
 
@@ -242,8 +251,8 @@ def main(variant):
     # print(r)
     # print(rtg)
     # print(t)
-    print(mask)
-    return
+    # print(mask)
+    # return
 
     model = DecisionTransformer(
         state_dim=state_dim,
@@ -268,7 +277,20 @@ def main(variant):
         lr=variant["learning_rate"],
         weight_decay=variant["weight_decay"],
     )
-    # TODO: understand what the scheduler does and the lambda steps:
+
+    # this adjusts the learning rate as follows:
+    # let's say there are 100 warmup_steps, and learning_rate is 0.5
+    # then the learning rate will be:
+    # 0th step: 0.05
+    # 1st step: 0.06
+    # 2nd step: 0.07
+    # ...
+    # 100th step: 0.5
+    # 101st step: 0.5
+    # 102nd step: 0.5
+    #
+    # The authors *do not* decay the learning rate in their OpenAI Gym experiments after the warmup steps!
+    # They only use cosine decay for their ATARI experiments
     scheduler = torch.optim.lr_scheduler.LambdaLR(
         optimizer, lambda steps: min((steps + 1) / warmup_steps, 1)
     )
