@@ -61,10 +61,13 @@ def game_events_occurred(
 
     # state_to_features is defined in callbacks.py
     self.episode_trajectory.append(
-        (
-            state_to_features(self, old_game_state),
-            _one_hot_encode(ACTIONS.index(self_action)),
-            reward_from_events(self, events),
+        np.array(
+            [
+                state_to_features(self, old_game_state),
+                _one_hot_encode(ACTIONS.index(self_action)),
+                reward_from_events(self, events),
+            ],
+            dtype=object,
         )  # state_to_features(self, new_game_state), new game state shouldn't be necessary
     )
 
@@ -89,15 +92,18 @@ def end_of_round(self, last_game_state: dict, last_action: str, events: List[str
         last_action = "WAIT"  # this is the result of an invalid action
 
     self.episode_trajectory.append(
-        (
-            state_to_features(self, last_game_state),
-            _one_hot_encode(ACTIONS.index(last_action)),
-            reward_from_events(self, events),
+        np.array(
+            [
+                state_to_features(self, last_game_state),
+                _one_hot_encode(ACTIONS.index(last_action)),
+                reward_from_events(self, events),
+            ],
+            dtype=object,
         )
     )
 
     # store the episode trajectory into the global variable
-    self.trajectories_over_episodes.append(self.episode_trajectory)
+    self.trajectories_over_episodes.append(np.array(self.episode_trajectory, dtype=object))
 
     # print(f"Episode: {self.episode}")
 
