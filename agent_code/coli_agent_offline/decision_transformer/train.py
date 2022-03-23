@@ -31,10 +31,11 @@ def discount_cumsum(x, gamma):
 
 def _get_rewards_to_go(x: np.array) -> np.array:
     """
+    Returns the rewards to go from a list of rewards.
+
+    Examples:
     [0, 0, 1, 0, 5, 0] --> [6, 6, 6, 5, 5, 0]
     [1, 1, 1, 1, 1, 1] --> [6, 5, 4, 3, 2, 1]
-
-    (try out more examples in if __name__ == __main__ to see how this function should behave)
     """
     r = np.zeros_like(x)
     r[0] = sum(x)  # take sum of array as first value
@@ -177,9 +178,15 @@ if __name__ == "__main__":
     print(discount_cumsum(np.array([0, 0, 1, 0, 5, 5]), gamma=1.0))
     print(discount_cumsum(np.array([0, 0, 0, 0, 0, 0]), gamma=1.0))
     print(discount_cumsum(np.array([1, 1, 1, 1, 1, 1]), gamma=1.0))
+    print(discount_cumsum(np.array([0, 5, 5, 5, 5, 5, 0]), gamma=1.0))
+    print(type(discount_cumsum(np.array([0, 5, 5, 5, 5, 5, 0]), gamma=1.0)))
+    print(discount_cumsum(np.array([0, 5, 5, 5, 5, 5, 0]), gamma=1.0).shape)
 
     # main(variant=vars(args))
     print(_get_rewards_to_go(np.array([0, 0, 1, 0, 5, 0])))
     print(_get_rewards_to_go(np.array([0, 0, 1, 0, 5, 5])))
     print(_get_rewards_to_go(np.array([0, 0, 0, 0, 0, 0])))
     print(_get_rewards_to_go(np.array([1, 1, 1, 1, 1, 1])))
+    print(_get_rewards_to_go(np.array([0, 5, 5, 5, 5, 5, 0])))
+    print(type(_get_rewards_to_go(np.array([0, 5, 5, 5, 5, 5, 0]))))
+    print(_get_rewards_to_go(np.array([0, 5, 5, 5, 5, 5, 0])).shape)
