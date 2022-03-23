@@ -22,22 +22,28 @@ def discount_cumsum(x, gamma=1.0):
     discount_cumsum = np.zeros_like(x)
     discount_cumsum[-1] = x[-1]
     for t in reversed(range(x.shape[0] - 1)):
+        # print(t)
+        # print(x[t], discount_cumsum[t + 1])
         discount_cumsum[t] = x[t] + gamma * discount_cumsum[t + 1]
+        # print(discount_cumsum[t], '\n')
     return discount_cumsum
 
 
 def _get_rewards_to_go(x: np.array) -> np.array:
     """
+    Returns the rewards to go from a list of rewards.
 
-
+    Examples:
     [0, 0, 1, 0, 5, 0] --> [6, 6, 6, 5, 5, 0]
     [1, 1, 1, 1, 1, 1] --> [6, 5, 4, 3, 2, 1]
-
-    (try out more examples in if __name__ == __main__ to see how this function should behave)
     """
-    returns_to_go = None
-
-    return returns_to_go
+    r = np.zeros_like(x)
+    r[0] = sum(x)  # take sum of array as first value
+    for i in range(len(r) - 1):
+        r[i + 1] = (
+            r[i] - x[i]
+        )  # compute next value in rewards_to_go by subtracting next val in x from current val in rewards_to_go
+    return r
 
 
 def main(variant):
@@ -343,10 +349,4 @@ if __name__ == "__main__":
     parser.add_argument("--device", type=str, default="cpu")  # FIXME: "cuda" if we train on cluster
 
     args = parser.parse_args()
-
-    # print(discount_cumsum(np.array([0, 0, 1, 0, 5, 0]), gamma=1.0))
-    # print(discount_cumsum(np.array([0, 0, 1, 0, 5, 5]), gamma=1.0))
-    # print(discount_cumsum(np.array([0, 0, 0, 0, 0, 0]), gamma=1.0))
-    # print(discount_cumsum(np.array([1, 1, 1, 1, 1, 1]), gamma=1.0))
-
     main(variant=vars(args))
