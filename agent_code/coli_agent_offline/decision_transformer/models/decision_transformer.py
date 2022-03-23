@@ -43,15 +43,16 @@ class DecisionTransformer(nn.Module):
         self.embed_state = nn.Linear(self.state_dim, hidden_size)
         self.embed_action = nn.Linear(self.action_dim, hidden_size)
 
-        self.embed_ln = nn.LayerNorm(hidden_size)  # TODO: what is this?
+        self.embed_ln = nn.LayerNorm(hidden_size)  # Layer Normalization
 
         # note: we don't predict states or returns for the paper
         # NOTE: we don't care about predicting states and returns, only actions
         # self.predict_state = nn.Linear(hidden_size, self.state_dim)
+        self.tanh = (
+            [nn.Tanh()] if action_tanh else []
+        )  # needs to be lists, so we can unpack them (else case cannot be None)
         self.predict_action = nn.Sequential(
-            *(
-                [nn.Linear(hidden_size, self.action_dim)] + ([nn.Tanh()] if action_tanh else [])
-            )  # TODO: why unpack with *?
+            nn.Linear(hidden_size, self.action_dim), *self.tanh
         )  # nn.Linear --> turn hidden vector into one-hot encoded action vector - run tanh over the result if action_tanh is True
         # self.predict_return = nn.Linear(hidden_size, 1)
 
@@ -60,10 +61,13 @@ class DecisionTransformer(nn.Module):
         batch_size, seq_length = (
             states.shape[0],
             states.shape[1],
-        )  # NOTE: states must be (B, L) where B = batch_size, L=length (TODO: padded)
+        )  # NOTE: states are (B, K, state_dim) where B = batch_size, K=context size, state_dim=49
 
-        if attention_mask is None:  # TODO: what does this do?
-            # attention mask for GPT: 1 if can be attended to, 0 if not
+        if (
+            attention_mask is None
+        ):  # NOTE: if for some reason get_batch doesn't return an attention_mask
+            # attention mask for GPT: 1 if can be attended to, 0 if not - not to confuse with
+            # masking *within* the transformer to calculate attention
             attention_mask = torch.ones((batch_size, seq_length), dtype=torch.long)
 
         # embed each modality with a different head
@@ -79,12 +83,22 @@ class DecisionTransformer(nn.Module):
 
         # this makes the sequence look like (R_1, s_1, a_1, R_2, s_2, a_2, ...)
         # which works nice in an autoregressive sense since states predict actions
-        stacked_inputs = (
-            torch.stack((returns_embeddings, state_embeddings, action_embeddings), dim=1)
-            .permute(0, 2, 1, 3)
-            .reshape(batch_size, 3 * seq_length, self.hidden_size)
+
+        print(
+            f"Stack shape: {torch.stack((returns_embeddings, state_embeddings, action_embeddings), dim=1).shape}"
         )
-        stacked_inputs = self.embed_ln(stacked_inputs)
+        print(
+            f"Permuted stack shape: {torch.stack((returns_embeddings, state_embeddings, action_embeddings), dim=1).permute(0, 2, 1, 3).shape}"
+        )
+        stacked_inputs = (
+            torch.stack((returns_embeddings, state_embeddings, action_embeddings), dim=1)  # ()
+            .permute(0, 2, 1, 3)
+            .reshape(
+                batch_size, 3 * seq_length, self.hidden_size
+            )  # NOTE: 3*seq_length because one step consists of 3 tokens returns_to_go, action and state
+        )
+        print(f"Stacked+permuted+reshaped shape: {stacked_inputs.shape}")
+        stacked_inputs = self.embed_ln(stacked_inputs)  # layer normalization
 
         # to make the attention mask fit the stacked inputs, have to stack it as well
         stacked_attention_mask = (

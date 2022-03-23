@@ -247,7 +247,7 @@ def main(variant):
 
     # for testing
     # s, a, r, rtg, t, mask = get_batch(batch_size=8, max_len=50)
-    # print(s)
+    # print(s.shape)
     # print(a)
     # print(r)
     # print(rtg)
