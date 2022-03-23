@@ -36,14 +36,14 @@ def _get_rewards_to_go(x: np.array) -> np.array:
 
     (try out more examples in if __name__ == __main__ to see how this function should behave)
     """
-    rewards_to_go = np.zeros_like(x)
-    rewards_to_go[0] = sum(x)  # take sum of array as first value
-    for i in range(len(rewards_to_go) - 1):
-        rewards_to_go[i + 1] = (
-            rewards_to_go[i] - x[i]
+    r = np.zeros_like(x)
+    r[0] = sum(x)  # take sum of array as first value
+    for i in range(len(r) - 1):
+        r[i + 1] = (
+            r[i] - x[i]
         )  # compute next value in rewards_to_go by subtracting next val in x from current val in rewards_to_go
 
-    return rewards_to_go
+    return r
 
 
 def main(variant):
