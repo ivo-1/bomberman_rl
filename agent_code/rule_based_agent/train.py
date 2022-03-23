@@ -11,7 +11,7 @@ ACTIONS = ["UP", "RIGHT", "DOWN", "LEFT", "WAIT", "BOMB"]
 
 
 def _one_hot_encode(x) -> np.array:
-    encoded = np.zeros(len(ACTIONS))
+    encoded = np.zeros(len(ACTIONS), dtype=int)
     encoded[x] = 1
     return encoded
 

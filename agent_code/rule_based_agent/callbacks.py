@@ -274,7 +274,7 @@ def state_to_features(self, game_state) -> np.array:
         9: bomb (without agent standing on it)
     """
     feature_vector = np.zeros(
-        self.board_size ** 2, dtype=np.int8
+        self.board_size ** 2, dtype=int
     )  # -128 to 127 suffices and saves space
 
     own_position = game_state["self"][-1]
