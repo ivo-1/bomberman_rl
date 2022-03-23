@@ -96,7 +96,9 @@ def main(variant):
 
         # construct one batch
         for trajectory_index in trajectory_idx:
-            trajectory = trajectories[trajectory_index]  # current trajectory
+            trajectory = trajectories[
+                trajectory_index
+            ]  # current trajectory: [length_of_trajectory, 3]
 
             # get random int in [0, traj_len=10 - 1] ==> get random sequences from trajectory (obeying max_len)
             rng_offset = random.randint(0, trajectory[:, 0].shape[0] - 1)
@@ -107,11 +109,17 @@ def main(variant):
                 trajectory[:, 0][rng_offset : rng_offset + max_len], axis=0
             ) == trajectory[:, 0][rng_offset : rng_offset + max_len].reshape(1, -1, state_dim)
             states.append(
-                trajectory[:, 0][rng_offset : rng_offset + max_len].reshape(1, -1, state_dim)
+                np.vstack(trajectory[:, 0][rng_offset : rng_offset + max_len]).reshape(
+                    1, -1, state_dim
+                )  # (1, length_of_trajectory chosen, 49)
             )
             actions.append(
-                trajectory[:, 1][rng_offset : rng_offset + max_len].reshape(1, -1, action_dim)
+                np.vstack(trajectory[:, 1][rng_offset : rng_offset + max_len]).reshape(
+                    1, -1, action_dim
+                )
             )
+
+            # NOTE: no vstack needed here
             rewards.append(
                 trajectory[:, 2][rng_offset : rng_offset + max_len].reshape(1, -1, 1)
             )  # NOTE: this might have to stay a reshape and not an expand_dim
@@ -120,14 +128,94 @@ def main(variant):
             # "done signal, equal to 1 if playing the corresponding action in the state should terminate the episode"
 
             timesteps.append(
-                np.arange(rng_offset, rng_offset + states[-1].shape[1]).reshape(1, -1)
+                np.arange(rng_offset, rng_offset + states[-1].shape[1]).reshape(
+                    1, -1
+                )  # [1, length_of_trajectory]
             )  # e.g. append [[399, 400, 401, 402]]
             timesteps[-1][timesteps[-1] >= max_ep_len] = (
                 max_ep_len - 1
-            )  # e.g. timesteps [399, 400, 401, 402] ==> [399, 400, 400, 400]
+            )  # e.g. timesteps [[399, 400, 401, 402]] ==> [[399, 400, 400, 400]] when max_ep_len = 401 (1, length_of_trajectory)
 
-            # TODO: everything beyond line 141
-            # returns_to_go
+            # all future rewards (even over max_len) so that the calculation of returns to go is correct
+            rewards_to_go_from_offset = _get_rewards_to_go(
+                trajectory[:, 2][rng_offset:]
+            )  # (length_of_trajectory from cutoff til end,)
+
+            # append only max_len allowed sequence
+            return_to_go.append(
+                rewards_to_go_from_offset[: states[-1].shape[1] + 1].reshape(1, -1, 1)
+            )  # (1, length_of_trajectory, 1)
+
+            # there is exactly one more state seen in the current sequence than rewards in the current sequence
+            # --> add one zero reward to go
+            # TODO: When does this happen?
+            if return_to_go[-1].shape[1] <= states[-1].shape[1]:
+                return_to_go[-1] = np.concatenate(
+                    [return_to_go[-1], np.zeros((1, 1, 1), dtype=int)], axis=1
+                )
+
+            sequence_len = states[-1].shape[1]
+
+            # left-padding with zero states if our sequence is shorter than max_len
+            # this happens when the offset is high and the rest of the trajectory till episode
+            # finish is shorter than max_len
+            # (TODO: is the padding a problem? --> 0 means free for us which would suggest that we're on a free field)
+            # --> probably safer to not encode any field state with 0, but rather start with one
+            states[-1] = np.concatenate(
+                [np.zeros((1, max_len - sequence_len, state_dim), dtype=int), states[-1]], axis=1
+            )
+            # TODO: normalization  - skip for now
+
+            # left-padding with dummy action (not one-hot encoded, but just whole vector -10)
+            actions[-1] = np.concatenate(
+                [np.ones((1, max_len - sequence_len, action_dim)) * -10, actions[-1]], axis=1
+            )
+
+            # left-padding reward with 0 rewards
+            rewards[-1] = np.concatenate(
+                [np.zeros((1, max_len - sequence_len)), rewards[-1]], axis=1
+            )
+
+            # TODO: left-padding done/terminals - skip for now
+
+            # left-padding rewards_to_go with zero reward-to-go and TODO: normalize with scale
+            return_to_go[-1] = np.concatenate(
+                [np.zeros((1, max_len - sequence_len, 1)), return_to_go[-1]], axis=1
+            )  # / scale
+
+            # left-padding timesteps with zeros
+            timesteps[-1] = np.concatenate(
+                [np.zeros((1, max_len - sequence_len)), timesteps[-1]], axis=1
+            )
+
+            # masking the fake tokens (the left-paddings), i.e. [0, 0, 1, 1, 1] if max_len-sequence_len == 2
+            mask.append(
+                np.concatenate(
+                    [np.zeros((1, max_len - sequence_len)), np.ones((1, sequence_len))], axis=1
+                )
+            )
+
+        # concatenate all the stuff of all the sequences in the batch to be behind each other and prepare them to be sent to torch
+        states = torch.from_numpy(np.concatenate(states, axis=0)).to(
+            dtype=torch.float32, device=device
+        )
+        actions = torch.from_numpy(np.concatenate(actions, axis=0)).to(
+            dtype=torch.float32, device=device
+        )
+        rewards = torch.from_numpy(np.concatenate(rewards, axis=0)).to(
+            dtype=torch.float32, device=device
+        )
+        # done_idx = torch.from_numpy(np.concatenate(done_idx, axis=0)).to(dtype=torch.long, device=device)
+        return_to_go = torch.from_numpy(np.concatenate(return_to_go, axis=0)).to(
+            dtype=torch.float32, device=device
+        )
+        timesteps = torch.from_numpy(np.concatenate(timesteps, axis=0)).to(
+            dtype=torch.long, device=device
+        )
+        mask = torch.from_numpy(np.concatenate(mask, axis=0)).to(dtype=torch.int, device=device)
+
+        # TODO: add done_idx
+        return states, actions, rewards, return_to_go, timesteps, mask
 
     model = DecisionTransformer(
         state_dim=state_dim,
@@ -143,6 +231,36 @@ def main(variant):
         resid_pdrop=variant["dropout"],
         attn_pdrop=variant["dropout"],
     )
+
+    model.to(device)
+
+    warmup_steps = variant["warmup_steps"]
+    optimizer = torch.optim.AdamW(
+        model.parameters(),
+        lr=variant["learning_rate"],
+        weight_decay=variant["weight_decay"],
+    )
+    # TODO: understand what the scheduler does and the lambda steps:
+    scheduler = torch.optim.lr_scheduler.LambdaLR(
+        optimizer, lambda steps: min((steps + 1) / warmup_steps, 1)
+    )
+
+    trainer = Trainer(
+        model=model,
+        optimizer=optimizer,
+        batch_size=batch_size,
+        get_batch=get_batch,
+        scheduler=scheduler,
+        loss_fn=lambda s_hat, a_hat, r_hat, s, a, r: torch.mean(
+            (a_hat - a) ** 2
+        ),  # cross-entropy loss
+    )
+
+    # actual training loop
+    for iteration in range(variant["max_iters"]):
+        outputs = trainer.train_iteration(
+            num_steps=variant["num_steps_per_iter"], iter_num=iteration + 1, print_logs=True
+        )
 
 
 if __name__ == "__main__":
