@@ -130,8 +130,9 @@ def main(variant):
                 trajectory[:, 2][rng_offset : rng_offset + max_len].astype(int).reshape(1, -1, 1)
             )  # NOTE: this might have to stay a reshape and not an expand_dim
 
-            # TODO: do we need 'terminals' or 'dones'?
+            # NOTE: do we need 'terminals' or 'dones'?
             # "done signal, equal to 1 if playing the corresponding action in the state should terminate the episode"
+            # ANSWER: they don't use the 'dones' that are returned by this function --> no need
 
             timesteps.append(
                 np.arange(rng_offset, rng_offset + states[-1].shape[1]).reshape(
@@ -187,7 +188,7 @@ def main(variant):
                 [np.zeros((1, max_len - sequence_len, 1)), rewards[-1]], axis=1
             )
 
-            # TODO: left-padding done/terminals - skip for now
+            # NOTE: left-padding done/terminals - skip for now as they don't use done_idx
 
             # left-padding rewards_to_go with zero reward-to-go
             # authors divide the returns to go with `scale` -- as per issue #32 in their repo:
@@ -242,7 +243,7 @@ def main(variant):
         )
         mask = torch.from_numpy(np.concatenate(mask, axis=0)).to(dtype=torch.int, device=device)
 
-        # TODO: add done_idx
+        # NOTE: this is missing done_idx, as they are not used by the authors
         return states, actions, rewards, return_to_go, timesteps, mask
 
     # for testing

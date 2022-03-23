@@ -126,7 +126,9 @@ class DecisionTransformer(nn.Module):
 
         return action_preds  # state_preds, action_preds, return_preds
 
-    def get_action(self, states, actions, rewards, returns_to_go, timesteps, **kwargs):
+    def get_action(
+        self, states, actions, rewards, returns_to_go, timesteps, **kwargs
+    ):  # only at INFERENCE
         # we don't care about the past rewards in this model
 
         states = states.reshape(1, -1, self.state_dim)
