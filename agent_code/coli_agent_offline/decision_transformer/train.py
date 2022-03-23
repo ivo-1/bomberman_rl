@@ -18,7 +18,7 @@ from models.decision_transformer import DecisionTransformer
 # TODO: load last 4 trajectories into one?
 
 # TODO: remove this function once _get_rewards_to_go is implemented
-def discount_cumsum(x, gamma):
+def discount_cumsum(x, gamma=1.0):
     discount_cumsum = np.zeros_like(x)
     discount_cumsum[-1] = x[-1]
     for t in reversed(range(x.shape[0] - 1)):
@@ -49,7 +49,9 @@ def main(variant):
 
     # load dataset
     # [[(s, a, r), (s, a, r)], [(s, a, r,), (s, a, r), (s, a, r)]] <-- two trajectories
-    trajectories = np.load("trajectories/trajectories_2022-03-22T12:55:28:880375.npy")
+    trajectories = np.load(
+        "trajectories/trajectories_2022-03-23T16:38:30:372286.npy", allow_pickle=True
+    )
 
     # save trajectories into separate lists
     states, trajectory_lens, returns = [], [], []
@@ -105,9 +107,9 @@ def main(variant):
 
             # the reshapes are just torch unsqueezes but with numpy, i.e. shape: [2, 6] --> [1, 2, 6]
             # -1 just means inferring the one that's left over
-            assert np.expand_dims(
-                trajectory[:, 0][rng_offset : rng_offset + max_len], axis=0
-            ) == trajectory[:, 0][rng_offset : rng_offset + max_len].reshape(1, -1, state_dim)
+            # assert np.expand_dims(
+            #     trajectory[:, 0][rng_offset : rng_offset + max_len], axis=0
+            # ) == trajectory[:, 0][rng_offset : rng_offset + max_len].reshape(1, -1, state_dim)
             states.append(
                 np.vstack(trajectory[:, 0][rng_offset : rng_offset + max_len]).reshape(
                     1, -1, state_dim
@@ -120,8 +122,9 @@ def main(variant):
             )
 
             # NOTE: no vstack needed here
+            # NOTE: MUST be converted to int!
             rewards.append(
-                trajectory[:, 2][rng_offset : rng_offset + max_len].reshape(1, -1, 1)
+                trajectory[:, 2][rng_offset : rng_offset + max_len].astype(int).reshape(1, -1, 1)
             )  # NOTE: this might have to stay a reshape and not an expand_dim
 
             # TODO: do we need 'terminals' or 'dones'?
@@ -137,13 +140,14 @@ def main(variant):
             )  # e.g. timesteps [[399, 400, 401, 402]] ==> [[399, 400, 400, 400]] when max_ep_len = 401 (1, length_of_trajectory)
 
             # all future rewards (even over max_len) so that the calculation of returns to go is correct
-            rewards_to_go_from_offset = _get_rewards_to_go(
+            rewards_to_go_from_offset = discount_cumsum(
                 trajectory[:, 2][rng_offset:]
             )  # (length_of_trajectory from cutoff til end,)
 
             # append only max_len allowed sequence
+            # NOTE: must be cast!
             return_to_go.append(
-                rewards_to_go_from_offset[: states[-1].shape[1] + 1].reshape(1, -1, 1)
+                rewards_to_go_from_offset[: states[-1].shape[1] + 1].astype(int).reshape(1, -1, 1)
             )  # (1, length_of_trajectory, 1)
 
             # there is exactly one more state seen in the current sequence than rewards in the current sequence
@@ -173,7 +177,7 @@ def main(variant):
 
             # left-padding reward with 0 rewards
             rewards[-1] = np.concatenate(
-                [np.zeros((1, max_len - sequence_len)), rewards[-1]], axis=1
+                [np.zeros((1, max_len - sequence_len, 1)), rewards[-1]], axis=1
             )
 
             # TODO: left-padding done/terminals - skip for now
@@ -195,13 +199,23 @@ def main(variant):
                 )
             )
 
+        # print(len(states)) # batch_size because we have batchz_size sequences in the batch
+        # print(states[0].shape) # (1, max_len, state_dim)
+        # print(states[0].dtype) # int64
+
         # concatenate all the stuff of all the sequences in the batch to be behind each other and prepare them to be sent to torch
         states = torch.from_numpy(np.concatenate(states, axis=0)).to(
             dtype=torch.float32, device=device
         )
+
         actions = torch.from_numpy(np.concatenate(actions, axis=0)).to(
             dtype=torch.float32, device=device
         )
+
+        # print(len(rewards))
+        # print(rewards[0].shape) # (1, 50, 1) == (1, max_len, reward_dim (i.e. it's a number --> 1))
+        # print(rewards[0].dtype)
+
         rewards = torch.from_numpy(np.concatenate(rewards, axis=0)).to(
             dtype=torch.float32, device=device
         )
@@ -216,6 +230,9 @@ def main(variant):
 
         # TODO: add done_idx
         return states, actions, rewards, return_to_go, timesteps, mask
+
+    get_batch(batch_size=8, max_len=50)
+    return
 
     model = DecisionTransformer(
         state_dim=state_dim,
@@ -281,13 +298,13 @@ if __name__ == "__main__":
     parser.add_argument("--num_eval_episodes", type=int, default=100)
     parser.add_argument("--max_iters", type=int, default=10)
     parser.add_argument("--num_steps_per_iter", type=int, default=10000)
-    parser.add_argument("--device", type=str, default="cuda")
+    parser.add_argument("--device", type=str, default="cpu")  # FIXME: "cuda" if we train on cluster
 
     args = parser.parse_args()
 
-    print(discount_cumsum(np.array([0, 0, 1, 0, 5, 0]), gamma=1.0))
-    print(discount_cumsum(np.array([0, 0, 1, 0, 5, 5]), gamma=1.0))
-    print(discount_cumsum(np.array([0, 0, 0, 0, 0, 0]), gamma=1.0))
-    print(discount_cumsum(np.array([1, 1, 1, 1, 1, 1]), gamma=1.0))
+    # print(discount_cumsum(np.array([0, 0, 1, 0, 5, 0]), gamma=1.0))
+    # print(discount_cumsum(np.array([0, 0, 1, 0, 5, 5]), gamma=1.0))
+    # print(discount_cumsum(np.array([0, 0, 0, 0, 0, 0]), gamma=1.0))
+    # print(discount_cumsum(np.array([1, 1, 1, 1, 1, 1]), gamma=1.0))
 
-    # main(variant=vars(args))
+    main(variant=vars(args))
