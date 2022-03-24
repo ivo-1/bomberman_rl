@@ -1,11 +1,7 @@
 # don't confuse with train.py files used for --train; we don't do online RL
 import argparse
 import glob
-import os
-import pickle
 import random
-import sys
-from time import time
 
 import numpy as np
 import torch
@@ -303,16 +299,12 @@ def main(variant):
         batch_size=batch_size,
         get_batch=get_batch,
         scheduler=scheduler,
-        loss_fn=lambda s_hat, a_hat, r_hat, s, a, r: torch.mean(
-            (a_hat - a) ** 2
-        ),  # cross-entropy loss
+        loss_fn=lambda a_hat, a: torch.mean((a_hat - a) ** 2),  # cross-entropy loss
     )
 
     # actual training loop
     for iteration in range(variant["max_iters"]):
-        outputs = trainer.train_iteration(
-            num_steps=variant["num_steps_per_iter"], iter_num=iteration + 1, print_logs=True
-        )
+        trainer.train_iteration(num_steps=variant["num_steps_per_iter"], iter_num=iteration + 1)
 
 
 if __name__ == "__main__":

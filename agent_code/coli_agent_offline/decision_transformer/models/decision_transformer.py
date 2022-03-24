@@ -56,7 +56,7 @@ class DecisionTransformer(nn.Module):
         )  # nn.Linear --> turn hidden vector into one-hot encoded action vector - run tanh over the result if action_tanh is True
         # self.predict_return = nn.Linear(hidden_size, 1)
 
-    def forward(self, states, actions, rewards, returns_to_go, timesteps, attention_mask=None):
+    def forward(self, states, actions, returns_to_go, timesteps, attention_mask=None):
 
         batch_size, seq_length = (
             states.shape[0],
@@ -126,9 +126,7 @@ class DecisionTransformer(nn.Module):
 
         return action_preds  # state_preds, action_preds, return_preds
 
-    def get_action(
-        self, states, actions, rewards, returns_to_go, timesteps, **kwargs
-    ):  # only at INFERENCE
+    def get_action(self, states, actions, returns_to_go, timesteps, **kwargs):  # only at INFERENCE
         # we don't care about the past rewards in this model
 
         states = states.reshape(1, -1, self.state_dim)
