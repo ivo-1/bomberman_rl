@@ -23,6 +23,9 @@ def setup(self):
 
     :param self: This object is passed to all callbacks and you can set arbitrary values.
     """
+    self.old_score = 0
+    self.timestep = 0
+    # self.timestep = 1 # TODO: use this if everthing works and don't do (t+1)
     self.logger.info("Loading model from saved state.")
 
     self.state_dim = 49
@@ -76,7 +79,19 @@ def act(self, game_state: dict) -> str:
     :param game_state: The dictionary that describes everything on the board.
     :return: The action to take as a string.
     """
-    self.logger.debug("Converting game state to feature vector")
+    # get the reward from the previous action
+    previous_reward = game_state["self"][1] - self.old_score
+    self.old_score = previous_reward
+
+    current_return_to_go = self.target_return[0, -1] - (previous_reward / self.scale)
+    self.target_return = torch.cat(
+        [self.target_return, torch.tensor(current_return_to_go, device=self.device).unsqueeze(0)]
+    )
+
+    # and add it to previous seen rewards and overwrite the padding "fake" reward
+    self.rewards = torch.cat(
+        [self.rewards[:-1], torch.tensor(previous_reward, device=self.device).unsqueeze(0)]
+    )
 
     # The Decision Transformer always takes in (s, a, r). However, of course, at
     # this point there are no actions (and hence no rewards) because that's the whole
@@ -84,11 +99,21 @@ def act(self, game_state: dict) -> str:
     #
     # We can't just pass in the current state to it. Instead we pass in the current state
     # *and* "fake" actions and rewards that are just zeros
-
     self.actions = torch.cat(
         [self.actions, torch.zeros((1, self.act_dim), device=self.device)], dim=0
     )
     self.rewards = torch.cat([self.rewards, torch.zeros(1, device=self.device)])
+
+    self.logger.debug("Converting game state to feature vector")
+    # get the current state
+    state = (
+        torch.from_numpy(state_to_features(self, game_state))
+        .to(device=self.device)
+        .reshape(1, self.state_dim)
+    )
+
+    # concatenate it with all previous seen states
+    self.states = torch.cat([self.states, state], dim=0)
 
     self.logger.debug("Querying model for action...")
     action = self.model.get_action(
@@ -105,14 +130,13 @@ def act(self, game_state: dict) -> str:
         action.detach().cpu().numpy()
     )  # we need to detach it from the device and return a numpy copy to the CPU
 
-    # TODO: save the new state, the reward and the chosen action somehow
-    state = (
-        torch.from_numpy(state_to_features(self, game_state))
-        .to(device=self.device)
-        .reshape(1, self.state_dim)
+    # update timestep for next action
+    self.timesteps = torch.cat(
+        [self.timesteps, torch.ones((1, 1), device=self.device) * (self.timestep + 1)], dim=1
     )
 
-    return
+    self.timestep += 1
+    return action
 
 
 def state_to_features(self, game_state: dict) -> np.array:
