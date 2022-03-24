@@ -2,7 +2,9 @@ import time
 
 import numpy as np
 import torch
-from setup_logger import dt_logger
+from torch.nn import functional as F
+
+from agent_code.coli_agent_offline.setup_logger import dt_logger
 
 
 class Trainer:
@@ -20,7 +22,7 @@ class Trainer:
 
     def train_iteration(self, num_steps, iter_num=0):
 
-        dt_logger.info(f"====================== Iteration {iter_num} ==========================")
+        dt_logger.info("====================== Iteration {iter_num} ==========================")
 
         train_losses = []
 
@@ -85,9 +87,9 @@ class Trainer:
         torch.nn.utils.clip_grad_norm_(self.model.parameters(), 0.25)
         self.optimizer.step()
 
-        with torch.no_grad():  # TODO change to cross entropy loss
+        with torch.no_grad():
             dt_logger.info(
-                f"training action error: {torch.mean((action_preds-action_target)**2).detach().cpu().item()}"
-            )
+                f"training action error: {F.cross_entropy(action_preds-action_target).detach().cpu().item()}"
+            )  # FIXME
 
         return loss.detach().cpu().item()
