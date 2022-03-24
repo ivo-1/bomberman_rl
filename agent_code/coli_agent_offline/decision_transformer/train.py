@@ -260,7 +260,7 @@ def main(variant):
     model = DecisionTransformer(
         state_dim=state_dim,
         action_dim=action_dim,
-        max_length=variant,
+        max_length=K,
         max_ep_len=max_ep_len,
         hidden_size=variant["embed_dim"],
         n_layer=variant["n_layer"],

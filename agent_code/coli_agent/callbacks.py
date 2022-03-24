@@ -683,12 +683,3 @@ def state_to_features(self, game_state) -> np.array:
             return i
 
     raise ReferenceError("State dict created by state_to_features was not found in self.state_list")
-
-
-# Only to demonstrate test
-class DecisionTransformer:
-    def __init__(self):
-        pass
-
-    def adding_one(self, number: int) -> int:
-        return number + 1
