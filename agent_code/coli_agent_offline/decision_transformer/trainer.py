@@ -51,7 +51,7 @@ class Trainer:
 
     def train_step(self):
         # get data for this training iteration
-        states, actions, rewards, rtg, timesteps, attention_mask = self.get_batch(self.batch_size)
+        states, actions, rtg, timesteps, attention_mask = self.get_batch(self.batch_size)
         # in order to calculate loss, we need targets and predictions
         # cloning to circumvent pass-by-reference
         action_target = actions.clone()
