@@ -87,12 +87,12 @@ class DecisionTransformer(nn.Module):
         # this makes the sequence look like (R_1, s_1, a_1, R_2, s_2, a_2, ...)
         # which works nice in an autoregressive sense since states predict actions
 
-        print(
-            f"Stack shape: {torch.stack((returns_embeddings, state_embeddings, action_embeddings), dim=1).shape}"
-        )
-        print(
-            f"Permuted stack shape: {torch.stack((returns_embeddings, state_embeddings, action_embeddings), dim=1).permute(0, 2, 1, 3).shape}"
-        )
+        # print(
+        #     f"Stack shape: {torch.stack((returns_embeddings, state_embeddings, action_embeddings), dim=1).shape}"
+        # )
+        # print(
+        #     f"Permuted stack shape: {torch.stack((returns_embeddings, state_embeddings, action_embeddings), dim=1).permute(0, 2, 1, 3).shape}"
+        # )
         stacked_inputs = (
             torch.stack((returns_embeddings, state_embeddings, action_embeddings), dim=1)  # ()
             .permute(0, 2, 1, 3)
@@ -100,7 +100,7 @@ class DecisionTransformer(nn.Module):
                 batch_size, 3 * seq_length, self.hidden_size
             )  # NOTE: 3*seq_length because one step consists of 3 tokens returns_to_go, action and state
         )
-        print(f"Stacked+permuted+reshaped shape: {stacked_inputs.shape}")
+        # print(f"Stacked+permuted+reshaped shape: {stacked_inputs.shape}")
         stacked_inputs = self.embed_ln(stacked_inputs)  # layer normalization
 
         # to make the attention mask fit the stacked inputs, have to stack it as well
