@@ -65,7 +65,10 @@ class Trainer:
         )  # rtg[:,:-1] = last return-to-go in the context window of each trajectory
         # the authors also get state and reward predictions but we don't need those
 
-        # action_preds is originally (?, ?, number of possible actions)
+        # action_preds is originally (trajectory, state, actions)
+        # gets reshaped to (trajectory * state, actions), i.e. flattened by one dimension
+        # attention_mask is reshaped to the same dimensionality and used to pick those actions
+        # which have an attention greater than 0, i.e. are supposed to be remembered
         act_dim = action_preds.shape[2]  # here: 6
         action_preds = action_preds.reshape(-1, act_dim)[attention_mask.reshape(-1) > 0]
         action_target = action_target.reshape(-1, act_dim)[attention_mask.reshape(-1) > 0]
