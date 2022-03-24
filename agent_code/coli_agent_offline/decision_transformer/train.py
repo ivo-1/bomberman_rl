@@ -86,8 +86,7 @@ def main(variant):
             np.arange(num_trajectories), size=batch_size, replace=True
         )
 
-        states, actions, done_idx, return_to_go, timesteps, mask = (
-            [],
+        states, actions, return_to_go, timesteps, mask = (
             [],
             [],
             [],
