@@ -2,6 +2,7 @@
 import argparse
 import glob
 import random
+from datetime import datetime
 
 import numpy as np
 import torch
@@ -304,6 +305,8 @@ def main(variant):
     # actual training loop
     for iteration in range(variant["max_iters"]):
         trainer.train_iteration(num_steps=variant["num_steps_per_iter"], iter_num=iteration + 1)
+        timestamp = datetime.now().replace(microsecond=0).isoformat()
+        torch.save(model.state_dict(), f"checkpoints/model_{timestamp}_iter_{iteration + 1}.pt")
 
 
 if __name__ == "__main__":
