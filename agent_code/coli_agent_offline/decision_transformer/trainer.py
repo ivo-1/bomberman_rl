@@ -9,7 +9,7 @@ from torch.nn import functional as F
 
 
 class Trainer:
-    """pseudo docstring"""
+    """Trainer class to capsulate training definition from main file."""
 
     def __init__(self, model, optimizer, batch_size, get_batch, loss_fn, scheduler, eval_fns=None):
         self.model = model
@@ -22,6 +22,7 @@ class Trainer:
         self.start_time = time.time()
 
     def train_iteration(self, num_steps, iter_num=0):
+        """This method calls the train_step() method for num_steps."""
 
         dt_logger.info(f"====================== Iteration {iter_num} ==========================")
 
@@ -50,6 +51,8 @@ class Trainer:
         dt_logger.info(f"training loss std: {np.std(train_losses)}")
 
     def train_step(self):
+        """In this method the loss is getting computed for each step."""
+
         # get data for this training iteration
         states, actions, rtg, timesteps, attention_mask = self.get_batch(self.batch_size)
         # in order to calculate loss, we need targets and predictions
