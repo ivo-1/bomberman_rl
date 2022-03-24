@@ -304,10 +304,10 @@ def main(variant):
     )
 
     # actual training loop
+    timestamp = datetime.now().replace(microsecond=0).isoformat()
+    os.mkdir(f"checkpoints/{timestamp}/")
     for iteration in range(variant["max_iters"]):
         trainer.train_iteration(num_steps=variant["num_steps_per_iter"], iter_num=iteration + 1)
-        timestamp = datetime.now().replace(microsecond=0).isoformat()
-        os.mkdir(f"checkpoints/{timestamp}/")
         torch.save(model.state_dict(), f"checkpoints/{timestamp}/iter_{iteration + 1:02}.pt")
 
 
