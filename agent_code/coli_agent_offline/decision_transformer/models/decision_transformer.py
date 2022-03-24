@@ -18,7 +18,10 @@ class DecisionTransformer(nn.Module):
         hidden_size,  # size of positional embeddings
         max_length=None,  # context window
         max_ep_len=401,  # game of bomberman lasts max. 401 steps
-        action_tanh=True,  # squish values of action vector output to be between -1 and 1 TODO: this must later be run through softmax somewhere@
+        # squish values of action vector output to be between -1 and 1
+        # NOTE: these are the "logits", as the cross-entropy loss includes
+        # a softmax layer it is correct to not use softmax before
+        action_tanh=True,
         **kwargs,
     ):
         super().__init__()  # inherit usual stuff from nn.Module
