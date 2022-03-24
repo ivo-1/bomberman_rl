@@ -7,12 +7,9 @@ import numpy as np
 import torch
 from models.decision_transformer import DecisionTransformer
 from torch.nn import functional as F
+from trainer import Trainer
 
 # from decision_transformer.evaluation.evaluate_episodes import evaluate_episode, evaluate_episode_rtg
-# from decision_transformer.models.decision_transformer import DecisionTransformer
-# from decision_transformer.models.mlp_bc import MLPBCModel
-# from decision_transformer.training.act_trainer import ActTrainer
-# from decision_transformer.training.seq_trainer import SequenceTrainer
 
 
 def _get_rewards_to_go(x: np.array) -> np.array:

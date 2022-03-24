@@ -23,32 +23,48 @@ def setup(self):
 
     :param self: This object is passed to all callbacks and you can set arbitrary values.
     """
-
     self.logger.info("Loading model from saved state.")
+
+    self.state_dim = 49
+    self.action_dim = 6
+    self.context_window = 20
+    self.hidden_size = 128
+    self.dropout = 0.1
+
+    self.scale = (
+        2.5  # how much the rewards are scaled (divided by) s.t. they fall into range [0, 10]
+    )
+
     self.model = DecisionTransformer(
-        state_dim=49,  # how many entries the feature vector has (7*7=49)
-        action_dim=6,  # how many actions one can take
-        max_length=20,  # context window
+        state_dim=self.state_dim,  # how many entries the feature vector has (7*7=49)
+        action_dim=self.action_dim,  # how many actions one can take
+        max_length=self.context_window,  # context window
         max_ep_len=401,  # game of bomberman lasts max. 401 steps
-        hidden_size=128,  # size of positional embeddings
+        hidden_size=self.hidden_size,  # size of positional embeddings
         n_layer=3,  # GPT2
         n_head=1,  # GPT2
-        n_inner=4 * 128,  # GPT2
+        n_inner=4 * self.hidden_size,  # GPT2 4 because we have 4 heads (r, s, a, t)
         activation_function="relu",  # GPT2
         n_positions=1024,  # GPT2 ("the maximum sequence length that this model might ever be used with")
-        resid_pdrop=0.1,  # GPT2
-        attn_pdrop=0.1,  # GPT2
+        resid_pdrop=self.dropout,  # GPT2
+        attn_pdrop=self.dropout,  # GPT2
     )
     self.model.load_state_dict(torch.load("our/path/to/state_dict"))
     self.model.eval()  # evaluation (inference) mode
     self.device = "cpu"
     self.model.to(device=self.device)
 
-    self.scale = (
-        2.5  # how much the rewards are scaled (divided by) s.t. they fall into range [0, 10]
-    )
-    self.target_return = torch.tensor(15 / self.scale, device=self.device).reshape(1, 1)
-    self.timesteps = torch.tensor(0, device=self.device, dtype=torch.long).reshape(1, 1)
+    self.target_return = torch.tensor(
+        15 / self.scale, device=self.device, dtype=torch.float32
+    ).reshape(1, 1)
+
+    # keep track of states, actions, rewards, timesteps and initialize with zeros/empty
+    self.states = torch.zeros((1, self.state_dim), device=self.device)  # zero-state
+    self.actions = torch.zeros((0, self.action_dim), device=self.device)  # empty
+    self.rewards = torch.zeros(0, device=self.device)  # empty
+    self.timesteps = torch.tensor(0, device=self.device, dtype=torch.long).reshape(
+        1, 1
+    )  # zero-timestep
 
 
 def act(self, game_state: dict) -> str:
@@ -60,7 +76,41 @@ def act(self, game_state: dict) -> str:
     :param game_state: The dictionary that describes everything on the board.
     :return: The action to take as a string.
     """
-    self.logger.debug("Querying model for action.")
+    self.logger.debug("Converting game state to feature vector")
+
+    # The Decision Transformer always takes in (s, a, r). However, of course, at
+    # this point there are no actions (and hence no rewards) because that's the whole
+    # point of what should be predicted.
+    #
+    # We can't just pass in the current state to it. Instead we pass in the current state
+    # *and* "fake" actions and rewards that are just zeros
+
+    self.actions = torch.cat(
+        [self.actions, torch.zeros((1, self.act_dim), device=self.device)], dim=0
+    )
+    self.rewards = torch.cat([self.rewards, torch.zeros(1, device=self.device)])
+
+    self.logger.debug("Querying model for action...")
+    action = self.model.get_action(
+        self.states.to(dtype=torch.float32),
+        self.actions.to(dtype=torch.float32),
+        self.rewards.to(dtype=torch.float32),
+        self.target_return.to(dtype=torch.float32),
+        self.timesteps.to(dtype=torch.long),
+    )
+
+    # overwrite the "fake" action so that it will be used in the next timestep
+    self.actions[-1] = action
+    action = (
+        action.detach().cpu().numpy()
+    )  # we need to detach it from the device and return a numpy copy to the CPU
+
+    # TODO: save the new state, the reward and the chosen action somehow
+    state = (
+        torch.from_numpy(state_to_features(self, game_state))
+        .to(device=self.device)
+        .reshape(1, self.state_dim)
+    )
 
     return
 
@@ -68,7 +118,7 @@ def act(self, game_state: dict) -> str:
 def state_to_features(self, game_state: dict) -> np.array:
     """Parses game state to 49-dimensional feature vector
 
-    Out of board coordinates are represented as walls (feature value 1).
+    Out of board coordinates are represented as walls (feature value 2).
 
     field to value:
         1: free

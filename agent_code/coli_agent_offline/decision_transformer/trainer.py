@@ -2,9 +2,10 @@ import time
 
 import numpy as np
 import torch
-from torch.nn import functional as F
 
-from agent_code.coli_agent_offline.setup_logger import dt_logger
+# import setup_logger
+from setup_logger import dt_logger
+from torch.nn import functional as F
 
 
 class Trainer:
@@ -50,9 +51,7 @@ class Trainer:
 
     def train_step(self):
         # get data for this training iteration
-        states, actions, rewards, dones, rtg, timesteps, attention_mask = self.get_batch(
-            self.batch_size
-        )
+        states, actions, rewards, rtg, timesteps, attention_mask = self.get_batch(self.batch_size)
         # in order to calculate loss, we need targets and predictions
         # cloning to circumvent pass-by-reference
         action_target = actions.clone()
