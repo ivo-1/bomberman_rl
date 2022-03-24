@@ -23,7 +23,7 @@ class Trainer:
 
     def train_iteration(self, num_steps, iter_num=0):
 
-        dt_logger.info("====================== Iteration {iter_num} ==========================")
+        dt_logger.info(f"====================== Iteration {iter_num} ==========================")
 
         train_losses = []
 
@@ -72,7 +72,8 @@ class Trainer:
         # which have an attention greater than 0, i.e. are supposed to be remembered
         act_dim = action_preds.shape[2]  # here: 6
         action_preds = action_preds.reshape(-1, act_dim)[attention_mask.reshape(-1) > 0]
-        action_target = action_target.reshape(-1, act_dim)[attention_mask.reshape(-1) > 0]
+        action_target = action_target.reshape(-1, act_dim)[attention_mask.reshape(-1) > 0]  # (N, 6)
+        action_target = torch.argmax(action_target, axis=1)  # (N, )
 
         # is defined in train.py as cross-entropy loss
         loss = self.loss_fn(action_preds, action_target)
@@ -88,7 +89,7 @@ class Trainer:
 
         with torch.no_grad():
             dt_logger.info(
-                f"training action error: {F.cross_entropy(action_preds-action_target).detach().cpu().item()}"
+                f"training action error: {F.cross_entropy(action_preds, action_target).detach().cpu().item()}"
             )  # FIXME
 
         return loss.detach().cpu().item()
