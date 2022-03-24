@@ -10,6 +10,7 @@ from time import time
 import numpy as np
 import torch
 from models.decision_transformer import DecisionTransformer
+from torch.nn import functional as F
 
 # from decision_transformer.evaluation.evaluate_episodes import evaluate_episode, evaluate_episode_rtg
 # from decision_transformer.models.decision_transformer import DecisionTransformer
@@ -248,7 +249,7 @@ def main(variant):
 
     # for testing
     # s, a, r, rtg, t, mask = get_batch(batch_size=8, max_len=50)
-    # print(s.shape)
+    # print(rtg.shape)
     # print(a)
     # print(r)
     # print(rtg)
@@ -303,9 +304,10 @@ def main(variant):
         batch_size=batch_size,
         get_batch=get_batch,
         scheduler=scheduler,
-        loss_fn=lambda s_hat, a_hat, r_hat, s, a, r: torch.mean(
-            (a_hat - a) ** 2
-        ),  # cross-entropy loss
+        # loss_fn=lambda s_hat, a_hat, r_hat, s, a, r: torch.mean(
+        #    (a_hat - a) ** 2
+        # ),  # we use cross-entropy loss as we have discrete action space
+        loss_fn=lambda a_hat, a: F.cross_entropy(a_hat, a),
     )
 
     # actual training loop
