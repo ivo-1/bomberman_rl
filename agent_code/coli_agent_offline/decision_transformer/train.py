@@ -306,7 +306,7 @@ def main(variant):
     for iteration in range(variant["max_iters"]):
         trainer.train_iteration(num_steps=variant["num_steps_per_iter"], iter_num=iteration + 1)
         timestamp = datetime.now().replace(microsecond=0).isoformat()
-        torch.save(model.state_dict(), f"checkpoints/model_{timestamp}_iter_{iteration + 1}.pt")
+        torch.save(model.state_dict(), f"checkpoints/{timestamp}/iter_{iteration + 1:02}.pt")
 
 
 if __name__ == "__main__":
