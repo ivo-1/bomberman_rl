@@ -254,6 +254,10 @@ def main(variant):
         attn_pdrop=variant["dropout"],
     )
 
+    path = '/workspace/students/vu/new/bomberman_rl/agent_code/coli_agent_offline/decision_transformer/checkpoints/2022-03-24T19:26:16/iter_10.pt'
+
+    # model.load_state_dict(torch.load(path))
+
     model.to(device)
 
     warmup_steps = variant["warmup_steps"]
