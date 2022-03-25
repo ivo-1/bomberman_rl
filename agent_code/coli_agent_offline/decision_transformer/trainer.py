@@ -67,7 +67,7 @@ class Trainer:
         dt_logger.info(f"total time: {round(time.time() - self.start_time, 2)} s")
         dt_logger.info(f"evaluation time: {round(time.time() - eval_start, 2)} s")
         dt_logger.info(f"training loss mean: {round(np.mean(train_losses), 4)}")
-        dt_logger.info(f"training loss std: {np.std(train_losses)}")
+        dt_logger.info(f"training loss std: {round(np.std(train_losses), 4)}")
 
     def train_step(self):
         """In this method the loss is getting computed for each step."""
