@@ -112,6 +112,6 @@ class Trainer:
         self.optimizer.step()
 
         with torch.no_grad():
-            dt_logger.info(f"training action error: {detached_loss}")  # FIXME
+            dt_logger.info(f"training action error: {round(detached_loss, 4)}")
 
         return detached_loss
