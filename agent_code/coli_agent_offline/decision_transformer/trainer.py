@@ -64,9 +64,9 @@ class Trainer:
                 dt_logger.info(f"evaluation of {k}: {v}")
 
         # times may not be 100 % accurate due to where they are initialized
-        dt_logger.info(f"total time: {time.time() - self.start_time}")
-        dt_logger.info(f"evaluation time: {time.time() - eval_start}")
-        dt_logger.info(f"training loss mean: {np.mean(train_losses)}")
+        dt_logger.info(f"total time: {round(time.time() - self.start_time, 2)} s")
+        dt_logger.info(f"evaluation time: {round(time.time() - eval_start, 2)} s")
+        dt_logger.info(f"training loss mean: {round(np.mean(train_losses), 4)}")
         dt_logger.info(f"training loss std: {np.std(train_losses)}")
 
     def train_step(self):
