@@ -9,6 +9,7 @@ from datetime import datetime
 import numpy as np
 import torch
 from models.decision_transformer import DecisionTransformer
+from setup_logger import dt_logger
 from torch.nn import functional as F
 from trainer import Trainer
 
@@ -280,6 +281,7 @@ def main(variant):
     )
 
     timestamp = time.time()
+    isoformat_time = datetime.fromtimestamp(timestamp).replace(microsecond=0).isoformat()
 
     trainer = Trainer(
         model=model,
@@ -292,12 +294,15 @@ def main(variant):
         start_time=timestamp,
     )
 
+    try:
+        os.mkdir(f"checkpoints/{isoformat_time}/")
+        os.mkdir(f"plots/{isoformat_time}/")
+    except FileExistsError:
+        dt_logger.warning("Tried to create already existing checkpoint or plots folder.")
+
     # actual training loop
-    timestamp = datetime.now().replace(microsecond=0).isoformat()
-    os.mkdir(f"checkpoints/{timestamp}/")
     for iteration in range(variant["max_iters"]):
         trainer.train_iteration(num_steps=variant["num_steps_per_iter"], iter_num=iteration + 1)
-        isoformat_time = datetime.fromtimestamp(timestamp).replace(microsecond=0).isoformat()
         os.mkdir(f"checkpoints/{isoformat_time}/")
         torch.save(model.state_dict(), f"checkpoints/{isoformat_time}/iter_{iteration + 1:02}.pt")
 

@@ -1,11 +1,10 @@
 import time
+from datetime import datetime
 
 import numpy as np
+import plots
 import torch
-
-# import setup_logger
 from setup_logger import dt_logger
-from torch.nn import functional as F
 
 
 class Trainer:
@@ -40,13 +39,19 @@ class Trainer:
 
         dt_logger.info(f"training time: {time.time() - train_start}")
 
+        isoformat_time = datetime.fromtimestamp(self.start_time).replace(microsecond=0).isoformat()
         self.train_losses_all_iterations.extend(train_losses)  # for plotting
-        plots.plot_total_loss(
-            self.train_losses_all_iterations, time=self.start_time
-        )  # adjusting scale
-        plots.plot_iteration_loss(
-            train_losses, time=self.start_time
-        )  # different caption, title, fixed scale
+
+        plots.plot_loss(
+            train_losses, time=isoformat_time, iteration=iter_num + 1, version="current"
+        )
+        plots.plot_loss(train_losses, time=isoformat_time, iteration=iter_num + 1, version="detail")
+        plots.plot_loss(
+            self.train_losses_all_iterations,
+            time=isoformat_time,
+            iteration=iter_num + 1,
+            version="so far",
+        )
 
         eval_start = time.time()
 
