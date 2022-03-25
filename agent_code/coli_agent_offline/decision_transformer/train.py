@@ -3,6 +3,7 @@ import argparse
 import glob
 import os
 import random
+import time
 from datetime import datetime
 
 import numpy as np
@@ -293,6 +294,8 @@ def main(variant):
         optimizer, lambda steps: min((steps + 1) / warmup_steps, 1)
     )
 
+    timestamp = time.time()
+
     trainer = Trainer(
         model=model,
         optimizer=optimizer,
@@ -301,14 +304,15 @@ def main(variant):
         scheduler=scheduler,
         # we use cross-entropy loss as we have discrete action space
         loss_fn=lambda a_hat, a: F.cross_entropy(a_hat, a),
+        start_time=timestamp,
     )
 
     # actual training loop
     for iteration in range(variant["max_iters"]):
         trainer.train_iteration(num_steps=variant["num_steps_per_iter"], iter_num=iteration + 1)
-        timestamp = datetime.now().replace(microsecond=0).isoformat()
-        os.mkdir(f"checkpoints/{timestamp}/")
-        torch.save(model.state_dict(), f"checkpoints/{timestamp}/iter_{iteration + 1:02}.pt")
+        isoformat_time = datetime.fromtimestamp(timestamp).replace(microsecond=0).isoformat()
+        os.mkdir(f"checkpoints/{isoformat_time}/")
+        torch.save(model.state_dict(), f"checkpoints/{isoformat_time}/iter_{iteration + 1:02}.pt")
 
 
 if __name__ == "__main__":

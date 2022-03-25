@@ -11,7 +11,9 @@ from torch.nn import functional as F
 class Trainer:
     """pseudo docstring"""
 
-    def __init__(self, model, optimizer, batch_size, get_batch, loss_fn, scheduler, eval_fns=None):
+    def __init__(
+        self, model, optimizer, batch_size, get_batch, loss_fn, scheduler, start_time, eval_fns=None
+    ):
         self.model = model
         self.optimizer = optimizer
         self.batch_size = batch_size
@@ -19,7 +21,8 @@ class Trainer:
         self.loss_fn = loss_fn
         self.scheduler = scheduler
         self.eval_fns = [] if eval_fns is None else eval_fns
-        self.start_time = time.time()
+        self.start_time = start_time
+        self.train_losses_all_iterations = []
 
     def train_iteration(self, num_steps, iter_num=0):
 
@@ -36,6 +39,14 @@ class Trainer:
 
         dt_logger.info(f"training time: {time.time() - train_start}")
 
+        self.train_losses_all_iterations.extend(train_losses)  # for plotting
+        plots.plot_total_loss(
+            self.train_losses_all_iterations, time=self.start_time
+        )  # adjusting scale
+        plots.plot_iteration_loss(
+            train_losses, time=self.start_time
+        )  # different caption, title, fixed scale
+
         eval_start = time.time()
 
         self.model.eval()
@@ -44,6 +55,7 @@ class Trainer:
             for k, v in outputs.items():
                 dt_logger.info(f"evaluation of {k}: {v}")
 
+        # times may not be 100 % accurate due to where they are initialized
         dt_logger.info(f"total time: {time.time() - self.start_time}")
         dt_logger.info(f"evaluation time: {time.time() - eval_start}")
         dt_logger.info(f"training loss mean: {np.mean(train_losses)}")
@@ -78,6 +90,8 @@ class Trainer:
         # is defined in train.py as cross-entropy loss
         loss = self.loss_fn(action_preds, action_target)
 
+        detached_loss = loss.detach().cpu().item()
+
         # actual training:
         # resets gradients for this training step,
         # computes the new gradient and its norm
@@ -88,8 +102,6 @@ class Trainer:
         self.optimizer.step()
 
         with torch.no_grad():
-            dt_logger.info(
-                f"training action error: {F.cross_entropy(action_preds, action_target).detach().cpu().item()}"
-            )  # FIXME
+            dt_logger.info(f"training action error: {detached_loss}")  # FIXME
 
-        return loss.detach().cpu().item()
+        return detached_loss
