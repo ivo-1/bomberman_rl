@@ -43,12 +43,14 @@ class Trainer:
         self.train_losses_all_iterations.extend(train_losses)  # for plotting
 
         plots.plot_loss(
-            train_losses, time=isoformat_time, iteration=iter_num + 1, version="current"
+            train_losses, iso_time=isoformat_time, iteration=iter_num + 1, version="current"
         )
-        plots.plot_loss(train_losses, time=isoformat_time, iteration=iter_num + 1, version="detail")
+        plots.plot_loss(
+            train_losses, iso_time=isoformat_time, iteration=iter_num + 1, version="detail"
+        )
         plots.plot_loss(
             self.train_losses_all_iterations,
-            time=isoformat_time,
+            iso_time=isoformat_time,
             iteration=iter_num + 1,
             version="so far",
         )
