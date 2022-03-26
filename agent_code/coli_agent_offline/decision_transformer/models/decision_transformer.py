@@ -79,11 +79,15 @@ class DecisionTransformer(nn.Module):
             attention_mask = torch.ones((batch_size, seq_length), dtype=torch.long)
 
         # embed each modality with a different head
-        # try:
         state_embeddings = self.embed_state(states)
         action_embeddings = self.embed_action(actions)
         returns_embeddings = self.embed_return(returns_to_go)
-        time_embeddings = self.embed_timestep(timesteps)
+        try:
+            time_embeddings = self.embed_timestep(timesteps)
+        except IndexError:
+            print(timesteps)
+            print(timesteps.shape)
+            raise IndexError
 
         # time embeddings are treated similar to positional embeddings
         state_embeddings = state_embeddings + time_embeddings
@@ -198,7 +202,6 @@ class DecisionTransformer(nn.Module):
             ).to(dtype=torch.long)
         else:  # there is no context window
             attention_mask = None
-
         action_preds = self.forward(
             states, actions, returns_to_go, timesteps, attention_mask=attention_mask
         )

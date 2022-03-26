@@ -27,8 +27,10 @@ def setup(self):
     :param self: This object is passed to all callbacks and you can set arbitrary values.
     """
     self.old_score = 0
-    self.timestep = 0
-    # self.timestep = 1 # TODO: use this if everthing works and don't do (t+1)
+    # self.timestep = 0
+    self.timestep = 0  # TODO: use this if everthing works and don't do (t+1)
+    self.current_round = 0
+
     self.logger.info("Loading model from saved state.")
 
     self.state_dim = 49
@@ -70,7 +72,7 @@ def setup(self):
         attn_pdrop=self.dropout,  # GPT2
     )
 
-    path = "/home/trang/Dokumente/Uni/Wise21-22/FML/bomberman_rl/agent_code/coli_agent_offline/checkpoints/2022-03-25T14:18:48/iter_10.pt"
+    path = "/Users/ivo/Studium/fml/bomberman_rl/agent_code/coli_agent_offline/decision_transformer/checkpoints/2022-03-26T07:44:45/iter_20.pt"
 
     self.model.load_state_dict(torch.load(path, map_location=torch.device("cpu")))
     self.model.eval()  # evaluation (inference) mode
@@ -99,6 +101,10 @@ def act(self, game_state: dict) -> str:
     :param game_state: The dictionary that describes everything on the board.
     :return: The action to take as a string.
     """
+    if game_state["round"] != self.current_round:
+        self.timestep = 0
+        self.current_round = game_state["round"]
+
     # get the reward from the previous action
     previous_reward = game_state["self"][1] - self.old_score
     self.old_score = previous_reward
@@ -135,6 +141,7 @@ def act(self, game_state: dict) -> str:
     self.states = torch.cat([self.states, state], dim=0)
 
     self.logger.debug("Querying model for action...")
+    # print(f"self timestep: {self.timestep}")
     action = self.model.get_action(
         states=self.states.to(dtype=torch.float32),
         actions=self.actions.to(dtype=torch.float32),
@@ -150,7 +157,7 @@ def act(self, game_state: dict) -> str:
 
     # update timestep for next action
     self.timesteps = torch.cat(
-        [self.timesteps, torch.ones((1, 1), device=self.device) * (self.timestep + 1)], dim=1
+        [self.timesteps, torch.ones((1, 1), device=self.device) * (self.timestep)], dim=1
     )
 
     self.timestep += 1
