@@ -2,10 +2,9 @@ import time
 from datetime import datetime
 
 import numpy as np
-import plots
 import torch
-
-from agent_code.coli_agent_offline.decision_transformer.setup_logger import dt_logger
+from plots import plot_loss
+from setup_logger import dt_logger
 
 
 class Trainer:
@@ -43,13 +42,9 @@ class Trainer:
         isoformat_time = datetime.fromtimestamp(self.start_time).replace(microsecond=0).isoformat()
         self.train_losses_all_iterations.extend(train_losses)  # for plotting
 
-        plots.plot_loss(
-            train_losses, iso_time=isoformat_time, iteration=iter_num + 1, version="current"
-        )
-        plots.plot_loss(
-            train_losses, iso_time=isoformat_time, iteration=iter_num + 1, version="detail"
-        )
-        plots.plot_loss(
+        plot_loss(train_losses, iso_time=isoformat_time, iteration=iter_num + 1, version="current")
+        plot_loss(train_losses, iso_time=isoformat_time, iteration=iter_num + 1, version="detail")
+        plot_loss(
             self.train_losses_all_iterations,
             iso_time=isoformat_time,
             iteration=iter_num + 1,

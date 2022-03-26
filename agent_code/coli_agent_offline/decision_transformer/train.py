@@ -8,13 +8,10 @@ from datetime import datetime
 
 import numpy as np
 import torch
+from models.decision_transformer import DecisionTransformer
+from setup_logger import dt_logger
 from torch.nn import functional as F
 from trainer import Trainer
-
-from agent_code.coli_agent_offline.decision_transformer.models.decision_transformer import (
-    DecisionTransformer,
-)
-from agent_code.coli_agent_offline.decision_transformer.setup_logger import dt_logger
 
 # from decision_transformer.evaluation.evaluate_episodes import evaluate_episode, evaluate_episode_rtg
 
@@ -303,7 +300,7 @@ def main(variant):
 
     try:
         os.mkdir(f"../checkpoints/{isoformat_time}/")
-        os.mkdir(f"../plots/{isoformat_time}/")
+        os.mkdir(f"plots/{isoformat_time}/")
     except FileExistsError:
         dt_logger.warning("Tried to create already existing checkpoint or plots folder.")
 

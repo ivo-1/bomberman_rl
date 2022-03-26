@@ -3,10 +3,7 @@ from ast import Index
 import torch
 import torch.nn as nn
 import transformers
-
-from agent_code.coli_agent_offline.decision_transformer.models.trajectory_gpt2 import (
-    GPT2Model,
-)
+from models.trajectory_gpt2 import GPT2Model
 
 
 class DecisionTransformer(nn.Module):
