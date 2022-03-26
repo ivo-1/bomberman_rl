@@ -1,7 +1,12 @@
+from ast import Index
+
 import torch
 import torch.nn as nn
 import transformers
-from models.trajectory_gpt2 import GPT2Model
+
+from agent_code.coli_agent_offline.decision_transformer.models.trajectory_gpt2 import (
+    GPT2Model,
+)
 
 
 class DecisionTransformer(nn.Module):
@@ -74,6 +79,7 @@ class DecisionTransformer(nn.Module):
             attention_mask = torch.ones((batch_size, seq_length), dtype=torch.long)
 
         # embed each modality with a different head
+        # try:
         state_embeddings = self.embed_state(states)
         action_embeddings = self.embed_action(actions)
         returns_embeddings = self.embed_return(returns_to_go)
@@ -129,7 +135,7 @@ class DecisionTransformer(nn.Module):
 
         return action_preds  # state_preds, action_preds, return_preds
 
-    def get_action(self, states, actions, returns_to_go, timesteps, **kwargs):  # only at INFERENCE
+    def get_action(self, states, actions, returns_to_go, timesteps):  # only at INFERENCE
         # we don't care about the past rewards in this model
 
         states = states.reshape(1, -1, self.state_dim)
@@ -193,8 +199,8 @@ class DecisionTransformer(nn.Module):
         else:  # there is no context window
             attention_mask = None
 
-        _, action_preds, return_preds = self.forward(
-            states, actions, None, returns_to_go, timesteps, attention_mask=attention_mask, **kwargs
+        action_preds = self.forward(
+            states, actions, returns_to_go, timesteps, attention_mask=attention_mask
         )
 
         return action_preds[0, -1]

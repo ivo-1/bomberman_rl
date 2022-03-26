@@ -8,10 +8,13 @@ from datetime import datetime
 
 import numpy as np
 import torch
-from models.decision_transformer import DecisionTransformer
-from setup_logger import dt_logger
 from torch.nn import functional as F
 from trainer import Trainer
+
+from agent_code.coli_agent_offline.decision_transformer.models.decision_transformer import (
+    DecisionTransformer,
+)
+from agent_code.coli_agent_offline.decision_transformer.setup_logger import dt_logger
 
 # from decision_transformer.evaluation.evaluate_episodes import evaluate_episode, evaluate_episode_rtg
 
@@ -44,7 +47,7 @@ def main(variant):
     # trajectory file that is generated during training) --> multiple files
 
     # find all trajectories in trajectories folder
-    list_of_trajectories = glob.glob("trajectories/*.npy")
+    list_of_trajectories = glob.glob("../trajectories/*.npy")
     # list_of_trajectories.sort(key=os.path.getctime) # sort by creation time
 
     print(f"Found the following trajectory files: {list_of_trajectories}")
@@ -254,7 +257,7 @@ def main(variant):
         attn_pdrop=variant["dropout"],
     )
 
-    path = '/workspace/students/vu/new/bomberman_rl/agent_code/coli_agent_offline/decision_transformer/checkpoints/2022-03-24T19:26:16/iter_10.pt'
+    path = "/workspace/students/vu/new/bomberman_rl/agent_code/coli_agent_offline/checkpoints/2022-03-24T19:26:16/iter_10.pt"
 
     # model.load_state_dict(torch.load(path))
 
@@ -299,15 +302,17 @@ def main(variant):
     )
 
     try:
-        os.mkdir(f"checkpoints/{isoformat_time}/")
-        os.mkdir(f"plots/{isoformat_time}/")
+        os.mkdir(f"../checkpoints/{isoformat_time}/")
+        os.mkdir(f"../plots/{isoformat_time}/")
     except FileExistsError:
         dt_logger.warning("Tried to create already existing checkpoint or plots folder.")
 
     # actual training loop
     for iteration in range(variant["max_iters"]):
         trainer.train_iteration(num_steps=variant["num_steps_per_iter"], iter_num=iteration)
-        torch.save(model.state_dict(), f"checkpoints/{isoformat_time}/iter_{iteration + 1:02}.pt")
+        torch.save(
+            model.state_dict(), f"../checkpoints/{isoformat_time}/iter_{iteration + 1:02}.pt"
+        )
 
 
 if __name__ == "__main__":

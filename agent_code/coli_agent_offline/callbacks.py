@@ -4,7 +4,10 @@ import random
 
 import numpy as np
 import torch
-from decision_transformer.models.decision_transformer import DecisionTransformer
+
+from agent_code.coli_agent_offline.decision_transformer.models.decision_transformer import (
+    DecisionTransformer,
+)
 
 ACTIONS = ["UP", "RIGHT", "DOWN", "LEFT", "WAIT", "BOMB"]
 
@@ -33,6 +36,20 @@ def setup(self):
     self.context_window = 20
     self.hidden_size = 128
     self.dropout = 0.1
+    self.board_size = 7
+    self.radius = 3
+    self.field_state_to_idx = {
+        "free": 1,
+        "wall": 2,
+        "crate": 3,
+        "coin": 4,
+        "coin_in_explosion": 5,
+        "explosion": 6,
+        "agent_bomb_possible": 7,
+        "agent_bomb_not_possible": 8,
+        "agent_on_own_bomb": 9,
+        "bomb": 9,
+    }
 
     self.scale = (
         2.5  # how much the rewards are scaled (divided by) s.t. they fall into range [0, 10]
@@ -52,7 +69,10 @@ def setup(self):
         resid_pdrop=self.dropout,  # GPT2
         attn_pdrop=self.dropout,  # GPT2
     )
-    self.model.load_state_dict(torch.load("our/path/to/state_dict"))
+
+    path = "/home/trang/Dokumente/Uni/Wise21-22/FML/bomberman_rl/agent_code/coli_agent_offline/checkpoints/2022-03-25T14:18:48/iter_10.pt"
+
+    self.model.load_state_dict(torch.load(path, map_location=torch.device("cpu")))
     self.model.eval()  # evaluation (inference) mode
     self.device = "cpu"
     self.model.to(device=self.device)
@@ -84,9 +104,8 @@ def act(self, game_state: dict) -> str:
     self.old_score = previous_reward
 
     current_return_to_go = self.target_return[0, -1] - (previous_reward / self.scale)
-    self.target_return = torch.cat(
-        [self.target_return, torch.tensor(current_return_to_go, device=self.device).unsqueeze(0)]
-    )
+
+    self.target_return = torch.cat([self.target_return, current_return_to_go.reshape(1, 1)])
 
     # and add it to previous seen rewards and overwrite the padding "fake" reward
     self.rewards = torch.cat(
@@ -100,7 +119,7 @@ def act(self, game_state: dict) -> str:
     # We can't just pass in the current state to it. Instead we pass in the current state
     # *and* "fake" actions and rewards that are just zeros
     self.actions = torch.cat(
-        [self.actions, torch.zeros((1, self.act_dim), device=self.device)], dim=0
+        [self.actions, torch.zeros((1, self.action_dim), device=self.device)], dim=0
     )
     self.rewards = torch.cat([self.rewards, torch.zeros(1, device=self.device)])
 
@@ -117,11 +136,10 @@ def act(self, game_state: dict) -> str:
 
     self.logger.debug("Querying model for action...")
     action = self.model.get_action(
-        self.states.to(dtype=torch.float32),
-        self.actions.to(dtype=torch.float32),
-        self.rewards.to(dtype=torch.float32),
-        self.target_return.to(dtype=torch.float32),
-        self.timesteps.to(dtype=torch.long),
+        states=self.states.to(dtype=torch.float32),
+        actions=self.actions.to(dtype=torch.float32),
+        returns_to_go=self.target_return.to(dtype=torch.float32),
+        timesteps=self.timesteps.to(dtype=torch.long),
     )
 
     # overwrite the "fake" action so that it will be used in the next timestep
@@ -136,7 +154,8 @@ def act(self, game_state: dict) -> str:
     )
 
     self.timestep += 1
-    return action
+
+    return ACTIONS[np.argmax(action)]
 
 
 def state_to_features(self, game_state: dict) -> np.array:
@@ -156,6 +175,7 @@ def state_to_features(self, game_state: dict) -> np.array:
         9: agent that's standing on a bomb (i.e. his own bomb)
         10: bomb (without agent standing on it)
     """
+
     feature_vector = np.zeros(
         self.board_size ** 2, dtype=int
     )  # -128 to 127 suffices and saves space

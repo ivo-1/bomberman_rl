@@ -4,7 +4,8 @@ from datetime import datetime
 import numpy as np
 import plots
 import torch
-from setup_logger import dt_logger
+
+from agent_code.coli_agent_offline.decision_transformer.setup_logger import dt_logger
 
 
 class Trainer:
