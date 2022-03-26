@@ -299,7 +299,7 @@ def main(variant):
     )
 
     try:
-        os.mkdir(f"../checkpoints/{isoformat_time}/")
+        os.mkdir(f"checkpoints/{isoformat_time}/")
         os.mkdir(f"plots/{isoformat_time}/")
     except FileExistsError:
         dt_logger.warning("Tried to create already existing checkpoint or plots folder.")
@@ -307,9 +307,7 @@ def main(variant):
     # actual training loop
     for iteration in range(variant["max_iters"]):
         trainer.train_iteration(num_steps=variant["num_steps_per_iter"], iter_num=iteration)
-        torch.save(
-            model.state_dict(), f"../checkpoints/{isoformat_time}/iter_{iteration + 1:02}.pt"
-        )
+        torch.save(model.state_dict(), f"checkpoints/{isoformat_time}/iter_{iteration + 1:02}.pt")
 
 
 if __name__ == "__main__":
