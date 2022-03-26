@@ -1,18 +1,22 @@
 # don't confuse with train.py files used for --train; we don't do online RL
 import argparse
 import glob
+import os
 import random
+import time
+from datetime import datetime
 
 import numpy as np
 import torch
 from models.decision_transformer import DecisionTransformer
+from setup_logger import dt_logger
 from torch.nn import functional as F
 from trainer import Trainer
 
 # from decision_transformer.evaluation.evaluate_episodes import evaluate_episode, evaluate_episode_rtg
 
 
-def _get_rewards_to_go(x: np.array) -> np.array:
+def _get_rewards_to_go(rewards: np.array) -> np.array:
     """
     Returns the rewards to go from a list of rewards.
 
@@ -20,13 +24,13 @@ def _get_rewards_to_go(x: np.array) -> np.array:
     [0, 0, 1, 0, 5, 0] --> [6, 6, 6, 5, 5, 0]
     [1, 1, 1, 1, 1, 1] --> [6, 5, 4, 3, 2, 1]
     """
-    r = np.zeros_like(x)
-    r[0] = sum(x)  # take sum of array as first value
-    for i in range(len(r) - 1):
-        r[i + 1] = (
-            r[i] - x[i]
+    returns_to_go = np.zeros_like(rewards)
+    returns_to_go[0] = sum(rewards)  # take sum of array as first value
+    for i in range(len(returns_to_go) - 1):
+        returns_to_go[i + 1] = (
+            returns_to_go[i] - rewards[i]
         )  # compute next value in rewards_to_go by subtracting next val in x from current val in rewards_to_go
-    return r
+    return returns_to_go
 
 
 def main(variant):
@@ -84,9 +88,7 @@ def main(variant):
             np.arange(num_trajectories), size=batch_size, replace=True
         )
 
-        states, actions, rewards, done_idx, return_to_go, timesteps, mask = (
-            [],
-            [],
+        states, actions, return_to_go, timesteps, mask = (
             [],
             [],
             [],
@@ -118,11 +120,6 @@ def main(variant):
                     1, -1, action_dim
                 )
             )
-
-            # NOTE: no vstack needed here and MUST be converted to int!
-            rewards.append(
-                trajectory[:, 2][rng_offset : rng_offset + max_len].astype(int).reshape(1, -1, 1)
-            )  # NOTE: this might have to stay a reshape and not an expand_dim
 
             # NOTE: do we need 'terminals' or 'dones'?
             # "done signal, equal to 1 if playing the corresponding action in the state should terminate the episode"
@@ -177,11 +174,6 @@ def main(variant):
                 [np.ones((1, max_len - sequence_len, action_dim)) * -10, actions[-1]], axis=1
             )
 
-            # left-padding reward with 0 rewards
-            rewards[-1] = np.concatenate(
-                [np.zeros((1, max_len - sequence_len, 1)), rewards[-1]], axis=1
-            )
-
             # NOTE: left-padding done/terminals - skip for now as they don't use done_idx
 
             # left-padding rewards_to_go with zero reward-to-go
@@ -225,9 +217,6 @@ def main(variant):
         # print(rewards[0].shape) # (1, 50, 1) == (1, max_len, reward_dim (i.e. it's a number --> 1))
         # print(rewards[0].dtype)
 
-        rewards = torch.from_numpy(np.concatenate(rewards, axis=0)).to(
-            dtype=torch.float32, device=device
-        )
         # done_idx = torch.from_numpy(np.concatenate(done_idx, axis=0)).to(dtype=torch.long, device=device)
         return_to_go = torch.from_numpy(np.concatenate(return_to_go, axis=0)).to(
             dtype=torch.float32, device=device
@@ -238,7 +227,7 @@ def main(variant):
         mask = torch.from_numpy(np.concatenate(mask, axis=0)).to(dtype=torch.int, device=device)
 
         # NOTE: this is missing done_idx, as they are not used by the authors
-        return states, actions, rewards, return_to_go, timesteps, mask
+        return states, actions, return_to_go, timesteps, mask
 
     # for testing
     # s, a, r, rtg, t, mask = get_batch(batch_size=8, max_len=50)
@@ -264,6 +253,10 @@ def main(variant):
         resid_pdrop=variant["dropout"],
         attn_pdrop=variant["dropout"],
     )
+
+    path = '/workspace/students/vu/new/bomberman_rl/agent_code/coli_agent_offline/decision_transformer/checkpoints/2022-03-24T19:26:16/iter_10.pt'
+
+    # model.load_state_dict(torch.load(path))
 
     model.to(device)
 
@@ -291,6 +284,9 @@ def main(variant):
         optimizer, lambda steps: min((steps + 1) / warmup_steps, 1)
     )
 
+    timestamp = time.time()
+    isoformat_time = datetime.fromtimestamp(timestamp).replace(microsecond=0).isoformat()
+
     trainer = Trainer(
         model=model,
         optimizer=optimizer,
@@ -299,11 +295,19 @@ def main(variant):
         scheduler=scheduler,
         # we use cross-entropy loss as we have discrete action space
         loss_fn=lambda a_hat, a: F.cross_entropy(a_hat, a),
+        start_time=timestamp,
     )
+
+    try:
+        os.mkdir(f"checkpoints/{isoformat_time}/")
+        os.mkdir(f"plots/{isoformat_time}/")
+    except FileExistsError:
+        dt_logger.warning("Tried to create already existing checkpoint or plots folder.")
 
     # actual training loop
     for iteration in range(variant["max_iters"]):
-        trainer.train_iteration(num_steps=variant["num_steps_per_iter"], iter_num=iteration + 1)
+        trainer.train_iteration(num_steps=variant["num_steps_per_iter"], iter_num=iteration)
+        torch.save(model.state_dict(), f"checkpoints/{isoformat_time}/iter_{iteration + 1:02}.pt")
 
 
 if __name__ == "__main__":
