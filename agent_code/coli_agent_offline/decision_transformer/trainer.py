@@ -10,21 +10,18 @@ from setup_logger import dt_logger
 class Trainer:
     """Trainer class to capsulate training definition from main file."""
 
-    def __init__(
-        self, model, optimizer, batch_size, get_batch, loss_fn, scheduler, start_time, eval_fns=None
-    ):
+    def __init__(self, model, optimizer, batch_size, get_batch, loss_fn, scheduler, start_time):
         self.model = model
         self.optimizer = optimizer
         self.batch_size = batch_size
         self.get_batch = get_batch
         self.loss_fn = loss_fn
         self.scheduler = scheduler
-        self.eval_fns = [] if eval_fns is None else eval_fns
         self.start_time = start_time
         self.train_losses_all_iterations = []
 
-    def train_iteration(self, num_steps, iter_num=0):
-        """This method calls the train_step() method for num_steps."""
+    def train_iteration(self, num_steps: int, iter_num=0) -> None:
+        """Calls the train_step() method for num_steps and performs logging and plotting."""
 
         dt_logger.info(f"====================== Iteration {iter_num} ==========================")
 
@@ -51,22 +48,13 @@ class Trainer:
             version="so far",
         )
 
-        eval_start = time.time()
-
-        self.model.eval()
-        for eval_fn in self.eval_fns:
-            outputs = eval_fn(self.model)
-            for k, v in outputs.items():
-                dt_logger.info(f"evaluation of {k}: {v}")
-
         # times may not be 100 % accurate due to where they are initialized
         dt_logger.info(f"total time: {round(time.time() - self.start_time, 2)} s")
-        dt_logger.info(f"evaluation time: {round(time.time() - eval_start, 2)} s")
         dt_logger.info(f"training loss mean: {round(np.mean(train_losses), 4)}")
         dt_logger.info(f"training loss std: {round(np.std(train_losses), 4)}")
 
-    def train_step(self):
-        """In this method the loss is getting computed for each step."""
+    def train_step(self) -> float:
+        """Computes the loss for each step."""
 
         # get data for this training iteration
         states, actions, rtg, timesteps, attention_mask = self.get_batch(self.batch_size)
@@ -78,24 +66,22 @@ class Trainer:
         action_preds = self.model.forward(
             states,
             actions,
-            rtg[:, :-1],
+            rtg[:, :-1],  # last return-to-go in the context window of each trajectory
             timesteps,
             attention_mask=attention_mask,
-        )  # rtg[:,:-1] = last return-to-go in the context window of each trajectory
-        # the authors also get state and reward predictions but we don't need those
+        )
 
         # action_preds is originally (trajectory, state, actions)
         # gets reshaped to (trajectory * state, actions), i.e. flattened by one dimension
         # attention_mask is reshaped to the same dimensionality and used to pick those actions
-        # which have an attention greater than 0, i.e. are supposed to be remembered
-        act_dim = action_preds.shape[2]  # here: 6
+        # which have an attention greater than 0, i.e. 1, meaning they are supposed to be remembered
+        act_dim = action_preds.shape[2]  # here: 6 - UP, DOWN, LEFT, RIGHT, BOMB, WAIT
         action_preds = action_preds.reshape(-1, act_dim)[attention_mask.reshape(-1) > 0]
         action_target = action_target.reshape(-1, act_dim)[attention_mask.reshape(-1) > 0]  # (N, 6)
         action_target = torch.argmax(action_target, axis=1)  # (N, )
 
         # is defined in train.py as cross-entropy loss
         loss = self.loss_fn(action_preds, action_target)
-
         detached_loss = loss.detach().cpu().item()
 
         # actual training:
