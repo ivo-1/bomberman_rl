@@ -326,7 +326,7 @@ if __name__ == "__main__":
     parser.add_argument("--weight_decay", "-wd", type=float, default=1e-4)
     parser.add_argument("--warmup_steps", type=int, default=10000)
     parser.add_argument("--num_eval_episodes", type=int, default=100)
-    parser.add_argument("--max_iters", type=int, default=3)
+    parser.add_argument("--max_iters", type=int, default=20)
     parser.add_argument("--num_steps_per_iter", type=int, default=10)
     parser.add_argument(
         "--scale", type=float, default=2.5
