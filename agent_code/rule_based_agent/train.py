@@ -116,7 +116,7 @@ def end_of_round(self, last_game_state: dict, last_action: str, events: List[str
         print(np.average([len(trajectory) for trajectory in trajectories]))
 
         np.save(
-            f"../coli_agent_offline/decision_transformer/trajectories/trajectories_{self.timestamp}",
+            f"../coli_agent_offline/trajectories/trajectories_{self.timestamp}",
             trajectories,
         )
 
