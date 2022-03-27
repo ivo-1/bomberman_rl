@@ -3,7 +3,8 @@ from ast import Index
 import torch
 import torch.nn as nn
 import transformers
-from models.trajectory_gpt2 import GPT2Model
+
+from .trajectory_gpt2 import GPT2Model
 
 
 class DecisionTransformer(nn.Module):
