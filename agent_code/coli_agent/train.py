@@ -15,7 +15,9 @@ from agent_code.coli_agent.plots import get_plots
 
 Transition = namedtuple("Transition", ("state", "action", "next_state", "reward"))
 
-TRANSITION_HISTORY_SIZE = 3  # keep only last 3 transitions
+TRANSITION_HISTORY_SIZE = (
+    1  # keep only last transition (we're doing one-step q-learning w/o looking into the past)
+)
 
 # --- Custom Events ---
 
@@ -257,7 +259,6 @@ def reward_from_events(self, events: List[str]) -> int:
     """
     Returns a summed up reward/penalty for a given list of events that happened.
     """
-
     game_rewards = {
         # e.BOMB_DROPPED: 10,
         e.BOMB_EXPLODED: 0,
