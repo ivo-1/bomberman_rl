@@ -15,7 +15,9 @@ from agent_code.coli_agent.plots import get_plots
 
 Transition = namedtuple("Transition", ("state", "action", "next_state", "reward"))
 
-TRANSITION_HISTORY_SIZE = 1  # 1-step q-learning
+TRANSITION_HISTORY_SIZE = (
+    1  # keep only last transition (we're doing one-step q-learning w/o looking into the past)
+)
 
 # --- Custom Events ---
 
