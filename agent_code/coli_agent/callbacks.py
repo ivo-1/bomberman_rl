@@ -604,13 +604,7 @@ def _shortest_path_feature(self, game_state: dict) -> Action:
         self.logger.info("Fallback Action")
         # unless we are not closest to any of our reachable coins, then we return action that leads us to
         # the coin we are nearest to anyway (no matter if reachable or not)
-        # try:
         return _get_action(self, self_coord, shortest_paths_to_coins[0][0][0])
-
-        # it is theoretically possible that coins are not reachable by our agent even if we don't consider
-        # crates as obstacles where shortest_paths_to_coins will be empty
-        # except IndexError:
-        #    return np.random.choice(SHORTEST_PATH_ACTIONS)
 
 
 def enemy_zone_feature(game_state: dict) -> bool:

@@ -15,7 +15,7 @@ from agent_code.coli_agent.plots import get_plots
 
 Transition = namedtuple("Transition", ("state", "action", "next_state", "reward"))
 
-TRANSITION_HISTORY_SIZE = 3  # keep only ... last transitions
+TRANSITION_HISTORY_SIZE = 3  # keep only last 3 transitions
 
 # --- Custom Events ---
 
@@ -56,7 +56,7 @@ def setup_training(self):
 
 def game_events_occurred(self, old_game_state, self_action: str, new_game_state, events):
     """Called once after each time step (after act()) except the last. Used to collect training
-    data and filling the experience buffer.
+    data and filling of the experience buffer.
 
     Also, the actual learning takes place here.
 
@@ -71,8 +71,7 @@ def game_events_occurred(self, old_game_state, self_action: str, new_game_state,
 
     old_feature_dict = self.state_list[old_state]
 
-    # Custom events and stuff
-
+    # Custom events
     reward_coin_feature = True
     if (
         old_feature_dict["bomb_safety_direction"] != "CLEAR"

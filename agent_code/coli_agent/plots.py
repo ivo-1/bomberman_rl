@@ -30,7 +30,7 @@ def plot_q_table_stats(self, x, fraction_unseen, average_seen, distribution_of_a
     axs[2].bar(distribution_of_actions.keys(), distribution_of_actions.values())
 
     fig.tight_layout()
-    fig.savefig(f"plots/q-table-plots_{self.timestamp}.png")  # , bbox_inches='tight')
+    fig.savefig(f"plots/q-table-plots_{self.timestamp}.png")
     plt.close(fig)
 
 
@@ -44,7 +44,7 @@ def plot_exploration_rate(self, x, exploration_rates) -> None:
     ax.plot(x, exploration_rates)
 
     fig.tight_layout()
-    fig.savefig(f"plots/exploration-rate_{self.timestamp}.png")  # , bbox_inches='tight')
+    fig.savefig(f"plots/exploration-rate_{self.timestamp}.png")
     plt.close(fig)
 
 
@@ -61,7 +61,7 @@ def plot_rewards(self, x, rewards_of_episodes) -> None:
     ax.legend()
 
     fig.tight_layout()
-    fig.savefig(f"plots/rewards_{self.timestamp}.png")  # , bbox_inches='tight')
+    fig.savefig(f"plots/rewards_{self.timestamp}.png")
     plt.close(fig)
 
 
@@ -78,7 +78,7 @@ def plot_game_score(self, x, game_scores_of_episodes) -> None:
     ax.legend()
 
     fig.tight_layout()
-    fig.savefig(f"plots/game-scores_{self.timestamp}.png")  # , bbox_inches='tight')
+    fig.savefig(f"plots/game-scores_{self.timestamp}.png")
     plt.close(fig)
 
 
