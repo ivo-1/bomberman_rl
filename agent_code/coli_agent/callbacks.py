@@ -701,6 +701,7 @@ def neighbouring_field_feature(self, game_state):
     shortest_coin_distance = 1000
     shortest_crate_path = None
     shortest_crate_distance = 1000
+    second_shortest_crate_path = None
 
     neighbours = _get_neighboring_tiles(own_position, 1)
     for idx, nei in enumerate(neighbours):
@@ -730,6 +731,7 @@ def neighbouring_field_feature(self, game_state):
                 crates_coordinates = [
                     index for index, field in np.ndenumerate(game_state["field"]) if field == 1
                 ]
+                # self.logger.debug(f"{crates_coordinates}")
                 for crate in crates_coordinates:
                     if crate not in graph_with_crates or crate in bomb_explosion_tiles:
                         continue
@@ -742,23 +744,32 @@ def neighbouring_field_feature(self, game_state):
                         if (
                             current_shortest_distance < shortest_crate_distance
                         ):  # find the overall shortest path to a coin
+                            second_shortest_crate_path = shortest_crate_path
+                            second_shortest_crate_distance = shortest_crate_distance
+                            # second_idx = idx
                             shortest_crate_path = current_shortest_path
                             shortest_crate_distance = current_shortest_distance
 
                     except nx.exception.NetworkXNoPath:
                         continue
                 # if all coins collected, search for opponent
+                # self.logger.debug(
+                #             f"{idx}: Is it None?: {shortest_crate_path}"
+                # )
                 if shortest_crate_path is not None:
-                    if shortest_crate_path[1] == nei:  # if next field in shortest path to a coin
-                        neighbours_result[idx] = 1
-                        if len(shortest_crate_path[1:]) >= 1:
+                    self.logger.debug(f"neighbour: {nei}")
+                    if shortest_crate_path[1] == nei:  # if next field in shortest path to a crate
+                        self.logger.debug(f"Best path: {shortest_crate_path}")
+                        if len(shortest_crate_path[1:]) > 1:
                             self.logger.debug(
                                 f"Next field leading to nearest crate: {shortest_crate_path[1]}"
                             )  # ?
-                        elif len(shortest_crate_path[1:]) == 1:
-                            self.logger.debug(
-                                f"Standing next to crate {shortest_crate_path[1]}"
-                            )  # ?
+                            neighbours_result[idx] = 1
+                        # elif len(shortest_crate_path[1:]) == 1:
+                        #     self.logger.debug(
+                        #         f"Standing next to crate {shortest_crate_path[1]}"
+                        #     )
+                        #     neighbours_result[idx] = 2
 
             if shortest_coin_path is not None:
                 try:
@@ -790,6 +801,16 @@ def neighbouring_field_feature(self, game_state):
 
         elif game_state["field"][nei[0]][nei[1]] != 0:
             neighbours_result[idx] = 2
+
+    # if 1 not in neighbours_result:
+    #     if second_shortest_crate_path is not None and second_shortest_crate_path == nei:
+    #         self.logger.debug(
+    #         f"Next field following shortest path {second_shortest_crate_path[1]}"
+    #         )
+    #         neighbours_result[idx] = 1
+
+    if 1 not in neighbours_result and 0 in neighbours_result:
+        neighbours_result[neighbours_result.index(0)] = 1
 
     self.logger.debug(f"[down, up, right, left]: {neighbours_result}")
 
@@ -985,6 +1006,7 @@ def _get_safe_tiles(self, source_coord, game_state):
 
 
 def current_field_feature(self, game_state):
+    current_field = 0
     graph = _get_graph(self, game_state)
     own_position = game_state["self"][-1]
     opponents_pos = [op[-1] for op in game_state["others"]]
@@ -1010,6 +1032,10 @@ def current_field_feature(self, game_state):
     crate, safe_tiles_coords, opponents_killed = _get_safe_tiles(
         self, own_position, game_state
     )  # get safe tiles wrt own position, crates and opponents in bomb range and
+
+    crate_coords = destroyable_crates(self, game_state["self"][-1], game_state)
+
+    crate = len(crate_coords)
 
     # if len(paths) <= countdown, add to safe_tiles
 
@@ -1083,11 +1109,11 @@ def current_field_feature(self, game_state):
                 try:
                     path = _find_shortest_path(graph, own_position, tile)
                     # self.logger.debug(f"Possible {path} in {countdown} steps")
-                    if path[1] <= countdown:
-                        self.logger.debug(f"Reachable {path} in {countdown} steps")
+                    if path[1] <= countdown + 1:
+                        self.logger.debug(f"Reachable {path} in {countdown + 1} steps")
                         reachable_tiles.append(tile)
                     else:
-                        self.logger.debug(f"Not reachable {path} in {countdown} steps")
+                        self.logger.debug(f"Not reachable {path} in {countdown + 1} steps")
                 except nx.exception.NetworkXNoPath:
                     self.logger.debug(f"There is no path")
                 except nx.exception.NodeNotFound:
@@ -1108,20 +1134,32 @@ def current_field_feature(self, game_state):
     if (own_position in bombs_dict.keys()) or danger:
         current_field = 4
 
-    if (crate >= 6 or opponents_killed > 1) and safe_tiles > 0 and game_state["self"][2] == True:
+    if (
+        (crate >= 6 or opponents_killed > 1)
+        and len(safe_tiles_coords) > 0
+        and game_state["self"][2] == True
+    ):
         current_field = 3
 
-    elif (crate >= 3 or opponents_killed > 1) and safe_tiles > 0 and game_state["self"][2] == True:
+    elif (
+        (crate >= 3 or opponents_killed > 1)
+        and len(safe_tiles_coords) > 0
+        and game_state["self"][2] == True
+    ):
         current_field = 2
 
-    elif (crate >= 1 or opponents_killed > 1) and safe_tiles > 0 and game_state["self"][2] == True:
+    elif (
+        (crate >= 1 or opponents_killed > 1)
+        and len(safe_tiles_coords) > 0
+        and game_state["self"][2] == True
+    ):
         current_field = 1
 
     if (
-        not danger
-        and game_state["self"][2] == False
-        or game_state["self"][2] == True
-        and (safe_tiles == 0 or crate == 0)
+        (not danger)
+        and (game_state["self"][2] == False)
+        or (game_state["self"][2] == True)
+        and (safe_tiles == 0 and safe_tiles_coords == 0 or crate == 0)
     ):
         self.logger.debug(f"Not in danger and no bomb function, or no safe tiles or no crates")
         current_field = 0
