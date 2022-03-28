@@ -6,7 +6,7 @@ def plot_q_table_stats(self, x, fraction_unseen, average_seen, distribution_of_a
     fig, axs = plt.subplots(nrows=1, ncols=3, figsize=(15, 5), dpi=150)  # create figure & 3 axes
     fig.suptitle(f"Q-Table Stats after episode {self.episode}")
 
-    fraction_unseen_hat = savgol_filter(fraction_unseen, 25, 2)
+    fraction_unseen_hat = savgol_filter(fraction_unseen, 125, 2)
     axs[0].set_title("Fraction of unseen states in Q-Table")
     axs[0].set_xlabel("Episode")
     axs[0].set_ylabel("Fraction of unseen states")
@@ -15,7 +15,7 @@ def plot_q_table_stats(self, x, fraction_unseen, average_seen, distribution_of_a
     axs[0].plot(x, fraction_unseen_hat, color="red", label="smoothed")
     axs[0].legend()
 
-    average_seen_hat = savgol_filter(average_seen, 25, 2)
+    average_seen_hat = savgol_filter(average_seen, 125, 2)
     axs[1].set_title("Average seen actions in Q-Table per state")
     axs[1].set_xlabel("Episode")
     axs[1].set_ylabel("Average seen actions")
@@ -51,7 +51,7 @@ def plot_exploration_rate(self, x, exploration_rates) -> None:
 def plot_rewards(self, x, rewards_of_episodes) -> None:
     fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(8, 5), dpi=150)  # create figure & 3 axes
 
-    rewards_of_episodes_hat = savgol_filter(rewards_of_episodes, 25, 2)
+    rewards_of_episodes_hat = savgol_filter(rewards_of_episodes, 125, 2)
     ax.set_title("Rewards over episodes")
     ax.set_xlabel("Episode")
     ax.set_ylabel("Reward")
@@ -68,7 +68,7 @@ def plot_rewards(self, x, rewards_of_episodes) -> None:
 def plot_game_score(self, x, game_scores_of_episodes) -> None:
     fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(8, 5), dpi=150)  # create figure & 3 axes
 
-    game_scores_of_episodes_hat = savgol_filter(game_scores_of_episodes, 25, 2)
+    game_scores_of_episodes_hat = savgol_filter(game_scores_of_episodes, 125, 2)
     ax.set_title("Game scores over episodes")
     ax.set_xlabel("Episode")
     ax.set_ylabel("Game Score")
