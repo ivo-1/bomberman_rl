@@ -284,15 +284,15 @@ def reward_from_events(self, events: List[str]) -> int:
     """
 
     game_rewards = {
-        e.BOMB_DROPPED: 25,  # adjust aggressiveness
+        e.BOMB_DROPPED: 5,  # adjust aggressiveness
         # # e.BOMB_EXPLODED: 0,
-        e.COIN_COLLECTED: 50,
+        e.COIN_COLLECTED: 0,
         # # e.COIN_FOUND: 5,  # direct consequence from crate destroyed, redundant reward?
-        e.WAITED: -3,  # adjust passivity
-        e.CRATE_DESTROYED: 5,
-        e.GOT_KILLED: -50,  # adjust passivity
-        e.KILLED_OPPONENT: 200,
-        e.KILLED_SELF: -25,  # you dummy --- this *also* triggers GOT_KILLED
+        e.WAITED: 0,  # adjust passivity
+        e.CRATE_DESTROYED: 7,
+        e.GOT_KILLED: 0,  # adjust passivity
+        e.KILLED_OPPONENT: 0,
+        e.KILLED_SELF: 0,  # you dummy --- this *also* triggers GOT_KILLED
         # e.OPPONENT_ELIMINATED: 0.05,  # good because less danger or bad because other agent scored points?
         # # e.SURVIVED_ROUND: 0,  # could possibly lead to not being active - actually penalize if agent too passive?
         # # necessary? (maybe for penalizing trying to move through walls/crates) - yes, seems to be necessary to
@@ -306,8 +306,8 @@ def reward_from_events(self, events: List[str]) -> int:
         # SUICIDAL: -15,
         # AGRESSIVE: 8,
         # SCARED: -9,
-        ESCAPED_DANGER: 50,
-        FOLLOWED_DANGER: -75,
+        # ESCAPED_DANGER: 50,
+        # FOLLOWED_DANGER: -75,
         # DECREASED_DISTANCE: 8,
         # INCREASED_DISTANCE: -8.1,  # higher? lower? idk
         # INCREASED_SURROUNDING_CRATES: 1.5,
@@ -316,18 +316,18 @@ def reward_from_events(self, events: List[str]) -> int:
         # DECREASED_BOMB_DISTANCE: -5.1,
         # FOLLOWED_DIRECTION: 5,  # possibly create penalty
         # NOT_FOLLOWED_DIRECTION: -6,
-        # FOLLOWED_PATH: 13,
-        # NOT_FOLLOWED_PATH: -20,
+        FOLLOWED_PATH: 13,
+        NOT_FOLLOWED_PATH: -20,
         # FOLLOWED_BOMB_DIRECTION: 25,
         # NOT_FOLLOWED_BOMB_DIRECTION: -50,
-        DROPPED_BAD_BOMB: -100,
+        # DROPPED_BAD_BOMB: -100,
         # DROPPED_UNNECESSARY_BOMB: -100,
         # TARGETED_ENEMY: 30,
         # BLOCKED: -100,
         # SAFE_WAY: -0.001,
-        TARGETED_MANY_CRATES: 15,
-        TARGETED_SOME_CRATES: 7.5,
-        NO_CRATE_DESTROYED: -10,
+        # TARGETED_MANY_CRATES: 15,
+        # TARGETED_SOME_CRATES: 7.5,
+        # NO_CRATE_DESTROYED: -10,
     }
 
     reward_sum = 0
