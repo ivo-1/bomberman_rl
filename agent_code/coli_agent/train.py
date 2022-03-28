@@ -10,12 +10,12 @@ from typing import List
 import numpy as np
 
 import events as e
-from agent_code.coli_agent.callbacks import ACTIONS, state_to_features
+from agent_code.coli_agent.callbacks import ACTIONS, Action, state_to_features
 from agent_code.coli_agent.plots import get_plots
 
 Transition = namedtuple("Transition", ("state", "action", "next_state", "reward"))
 
-TRANSITION_HISTORY_SIZE = 3  # keep only last 3 transitions
+TRANSITION_HISTORY_SIZE = 1  # 1-step q-learning
 
 # --- Custom Events ---
 
@@ -42,43 +42,50 @@ BLOCKED = "BLOCKED"
 NOT_BLOCKED = "NOT_BLOCKED"
 
 
-def setup_training(self):
-    """Sets up training"""
+def setup_training(self) -> None:
+    """Sets up training (called once before first episode when in train mode)"""
     self.exploration_rate = self.exploration_rate_initial
     self.learning_rate = 0.5
     self.discount_rate = 0.2
 
     # (s, a, s', r)
     self.transitions = deque(maxlen=TRANSITION_HISTORY_SIZE)
-    self.episode = 0  # need to keep track of episodes
-    self.rewards_of_episode = 0
+    self.episode = 0  # need to keep track of episodes, counted up after each episode
+    self.rewards_of_episode = 0  # reset to 0 after each episode
 
 
-def game_events_occurred(self, old_game_state, self_action: str, new_game_state, events):
+def game_events_occurred(
+    self, old_game_state: dict, self_action: str, new_game_state, events: List[str]
+) -> None:
     """Called once after each time step (after act()) except the last. Used to collect training
     data and filling of the experience buffer.
 
-    Also, the actual learning takes place here.
-
-    Will call state_to_features, and can then use these features for adding our custom events.
-    (if features = ... -> events.append(OUR_EVENT)). But events can also be added independently of features,
-    just using game state in general. Leveraging of features more just to avoid code duplication.
+    The actual learning takes place here.
+    Mainly defines 'game events', i.e. certain changes in the game state, so that they can be rewarded.
+    Calls the reward function, fills the transition deque, updates the q-table
+    and does some logging.
     """
 
+    # self.old_state got assigned in act(), before updating to the new state
+    # assigning of old and new state to self.variable happens so that
+    # state_to_features() only needs to be called a minimal amount of times as it's computationally expensive
     old_state = self.old_state
     self.new_state = state_to_features(self, new_game_state)
     new_state = self.new_state
 
     old_feature_dict = self.state_list[old_state]
 
-    # Custom events
+    # --- Custom events ---
+
+    # - Coin Feature -
+    # we only want to reward when it's safe to go after coins, i.e. not in bomb or enemy zone
     reward_coin_feature = True
     if (
         old_feature_dict["bomb_safety_direction"] != "CLEAR"
         or old_feature_dict["in_enemy_zone"] != 0
     ):
         reward_coin_feature = False
-    # sometimes coin_direction is random and can, e.g., be an explosion
+    # sometimes coin_direction is random and can, e.g., be an explosion (which is 'BLOCKED')
     if old_feature_dict["coin_direction"] == "UP" and old_feature_dict["up"] == "BLOCKED":
         reward_coin_feature = False
     if old_feature_dict["coin_direction"] == "DOWN" and old_feature_dict["down"] == "BLOCKED":
@@ -94,9 +101,11 @@ def game_events_occurred(self, old_game_state, self_action: str, new_game_state,
         else:
             events.append(NOT_FOLLOWED_COIN_DIRECTION)
 
+    # - Bomb Safety Feature -
+    # when we are't in bomb zone, neither reward nor penalty should be given for this
+    # again, direction can sometimes be random and lead to a BLOCKED tile
     if old_feature_dict["bomb_safety_direction"] != "CLEAR":
         reward_bomb_safety_feature = True
-        # sometimes bomb_safety_direction is random (when no way out) and can, e.g., be a wall
         if (
             old_feature_dict["bomb_safety_direction"] == "UP"
             and old_feature_dict["up"] == "BLOCKED"
@@ -123,6 +132,13 @@ def game_events_occurred(self, old_game_state, self_action: str, new_game_state,
             else:
                 events.append(NOT_FOLLOWED_BOMB_DIRECTION)
 
+    # - Safe To Bomb Feature -
+    # 5 cases:
+    # * it was unsafe to drop bomb, but a bomb was dropped -> DROPPED_BAD_BOMB
+    # * it was safe to drop bomb, but there were no crates or enemies -> DROPPED_UNNCESSARY_BOMB
+    # * it was safe to drop bomb and there was an enemy -> TARGETED_ENEMY
+    # * it was safe to drop bomb and there were some or many crates -> TARGETED_SOME_CRATES/TARGETED_MANY_CRATES
+    # crate and enemy targeting is not mutually exclusive, some and many crates is
     if old_feature_dict["safe_to_bomb"] == 0 and self_action == "BOMB":
         events.append(DROPPED_BAD_BOMB)
 
@@ -143,6 +159,8 @@ def game_events_occurred(self, old_game_state, self_action: str, new_game_state,
             ):
                 events.append(DROPPED_UNNECESSARY_BOMB)
 
+    # - Blockage Feature -
+    # unlike other events, is always excuted independent of other features
     if self_action == "UP":
         if old_feature_dict["up"] == "BLOCKED":
             events.append(BLOCKED)
@@ -203,8 +221,11 @@ def game_events_occurred(self, old_game_state, self_action: str, new_game_state,
     )
 
 
-def end_of_round(self, last_game_state, last_action, events):
-    """Called once per agent after the last step of a round."""
+def end_of_round(self, last_game_state: dict, last_action: Action, events: List[str]) -> None:
+    """Called once per agent after the last step of a round.
+
+    Cleans up after an episode, e.g. resets collected rewards, updates exploration rate etc.
+    """
     self.transitions.append(
         Transition(
             state_to_features(self, last_game_state),
@@ -240,6 +261,7 @@ def end_of_round(self, last_game_state, last_action, events):
     self.rewards_of_episodes.append(self.rewards_of_episode)
     self.game_scores_of_episodes.append(last_game_state["self"][1])
 
+    # We save current q-table status and plots after every 251 episodes in case of interruption
     if self.episode % 250 == 0 and self.episode != 0:
         self.logger.info(f"Saving Q-Table at episode: {self.episode}")
         np.save(os.path.join("q_tables", f"q_table-{self.timestamp}"), self.q_table)
@@ -254,20 +276,18 @@ def end_of_round(self, last_game_state, last_action, events):
 
 
 def reward_from_events(self, events: List[str]) -> int:
-    """
-    Returns a summed up reward/penalty for a given list of events that happened.
-    """
+    """Returns a summed up reward/penalty for a given list of events that happened."""
 
     game_rewards = {
-        # e.BOMB_DROPPED: 10,
+        e.BOMB_DROPPED: 0,
         e.BOMB_EXPLODED: 0,
-        # e.COIN_COLLECTED: 100,
+        e.COIN_COLLECTED: 0,
         e.COIN_FOUND: 0,
         e.WAITED: 0,
         e.CRATE_DESTROYED: 0,
         e.GOT_KILLED: 0,
         e.KILLED_OPPONENT: 0,
-        # e.KILLED_SELF: -500,  # this *also* triggers GOT_KILLED
+        e.KILLED_SELF: 0,  # this also triggers GOT_KILLED
         e.OPPONENT_ELIMINATED: 0,
         e.SURVIVED_ROUND: 0,
         e.INVALID_ACTION: 0,
@@ -281,11 +301,11 @@ def reward_from_events(self, events: List[str]) -> int:
         TARGETED_SOME_CRATES: 10,
         TARGETED_ENEMY: 100,
         BLOCKED: -100,
-        # NOT_BLOCKED: 10,
-        # e.MOVED_DOWN: 2.5,
-        # e.MOVED_LEFT: 2.5,
-        # e.MOVED_RIGHT: 2.5,
-        # e.MOVED_UP: 2.5
+        NOT_BLOCKED: 0,
+        e.MOVED_DOWN: 0,
+        e.MOVED_LEFT: 0,
+        e.MOVED_RIGHT: 0,
+        e.MOVED_UP: 0,
     }
 
     reward_sum = 0
