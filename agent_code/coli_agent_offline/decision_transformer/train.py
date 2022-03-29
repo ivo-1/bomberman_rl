@@ -64,8 +64,8 @@ def main(variant):
     trajectory_lens, returns = np.array(trajectory_lens), np.array(returns)
 
     # for input normalization (later)
-    # states = np.concatenate(states, axis=0)
-    # state_mean, state_std = np.mean(states, axis=0), np.std(states, axis=0) + 1e-6
+    states = np.vstack(np.concatenate(states, axis=0))
+    state_mean, state_std = np.mean(states), np.std(states) + 1e-6
 
     num_timesteps = sum(trajectory_lens)
     num_trajectories = len(trajectory_lens)  # we don't do any top-k %, so just take all
@@ -121,9 +121,7 @@ def main(variant):
                 )
             )
 
-            # NOTE: do we need 'terminals' or 'dones'?
-            # "done signal, equal to 1 if playing the corresponding action in the state should terminate the episode"
-            # ANSWER: they don't use the 'dones' that are returned by this function --> no need
+            # NOTE: we don't need 'done' signal
 
             timesteps.append(
                 np.arange(rng_offset, rng_offset + states[-1].shape[1]).reshape(
@@ -167,7 +165,8 @@ def main(variant):
             states[-1] = np.concatenate(
                 [np.zeros((1, max_len - sequence_len, state_dim), dtype=int), states[-1]], axis=1
             )
-            # TODO: normalization  - skip for now
+            # normalization
+            states[-1] = (states[-1] - state_mean) / state_std
 
             # left-padding with dummy action (not one-hot encoded, but just whole vector -10)
             actions[-1] = np.concatenate(
