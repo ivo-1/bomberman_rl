@@ -65,7 +65,10 @@ def main(variant):
 
     # for input normalization (later)
     states = np.vstack(np.concatenate(states, axis=0))
-    state_mean, state_std = np.mean(states), np.std(states) + 1e-6
+    state_mean, state_std = np.mean(states, axis=0), np.std(states, axis=0) + 1e-6
+
+    np.save("../data/coli_states_mean.npy", state_mean)
+    np.save("../data/coli_states_std.npy", state_std)
 
     num_timesteps = sum(trajectory_lens)
     num_trajectories = len(trajectory_lens)  # we don't do any top-k %, so just take all

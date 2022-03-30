@@ -45,9 +45,14 @@ def setup(self):
         2.5  # how much the rewards are scaled (divided by) s.t. they fall into range [0, 10]
     )
 
-    # TODO: make this dynamic
-    self.state_mean = torch.tensor(1.8590130975728476).to(device=self.device)
-    self.state_std = torch.tensor(1.3812701333301785).to(device=self.device)
+    self.device = "cpu"
+
+    self.state_mean = torch.torch.from_numpy(np.load("data/coli_states_mean.npy")).to(
+        device=self.device
+    )
+    self.state_std = torch.torch.from_numpy(np.load("data/coli_states_std.npy")).to(
+        device=self.device
+    )
 
     self.model = DecisionTransformer(
         state_dim=self.state_dim,  # how many entries the feature vector has
@@ -64,11 +69,10 @@ def setup(self):
         attn_pdrop=self.dropout,  # GPT2
     )
 
-    path = "/Users/ivo/Studium/fml/bomberman_rl/agent_code/coli_agent_offline/decision_transformer/checkpoints/2022-03-27T14:15:36/iter_20.pt"
+    path = "/Users/ivo/Studium/fml/bomberman_rl/agent_code/coli_agent_offline/decision_transformer/checkpoints/2022-03-29T22:30:41/iter_10.pt"
 
     self.model.load_state_dict(torch.load(path, map_location=torch.device("cpu")))
     self.model.eval()  # evaluation (inference) mode
-    self.device = "cpu"
     self.model.to(device=self.device)
 
     self.target_return = torch.tensor(
