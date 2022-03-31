@@ -2,9 +2,9 @@ import logging
 
 logging.basicConfig(filename="logs/coli_agent_offline_train.log")
 dt_logger = logging.getLogger("dt_logger")
-dt_logger.setLevel(logging.DEBUG)
+dt_logger.setLevel(logging.INFO)
 handler = logging.FileHandler("logs/coli_agent_offline_train.log", mode="w")
-handler.setLevel(logging.DEBUG)
+handler.setLevel(logging.INFO)
 formatter = logging.Formatter(
     "%(asctime)s %(levelname)-8s %(name)s:%(lineno)-3s - %(funcName)s()   %(message)s"
 )
