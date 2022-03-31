@@ -525,7 +525,7 @@ class GPT2Model(GPT2PreTrainedModel):
         super().__init__(config)
 
         self.wte = nn.Embedding(config.vocab_size, config.n_embd)  # NOTE: Token Embedding
-        # self.wpe = nn.Embedding(config.n_positions, config.n_embd) # NOTE: As described by the authors of the paper: positional embedding is done by them
+        # self.wpe = nn.Embedding(config.n_positions, config.n_embd) # NOTE: As described by the authors of the paper: positional embedding is done at the DecisionTransformer level
         self.drop = nn.Dropout(config.embd_pdrop)
         self.h = nn.ModuleList(
             [Block(config.n_ctx, config, scale=True) for _ in range(config.n_layer)]
@@ -696,7 +696,7 @@ class GPT2Model(GPT2PreTrainedModel):
 
         if inputs_embeds is None:
             inputs_embeds = self.wte(input_ids)
-        # position_embeds = self.wpe(position_ids) # NOTE: As described by the authors of the paper: positional embedding is done by them
+        # position_embeds = self.wpe(position_ids) # NOTE: As described by the authors of the paper: positional embedding is done at the DecisionTransformer level
         hidden_states = inputs_embeds  # + position_embeds
 
         if token_type_ids is not None:

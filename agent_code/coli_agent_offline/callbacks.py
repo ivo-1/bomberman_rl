@@ -59,7 +59,7 @@ def setup(self):
         action_dim=self.action_dim,  # how many actions one can take
         max_length=self.context_window,  # context window
         max_ep_len=401,  # game of bomberman lasts max. 401 steps
-        hidden_size=self.hidden_size,  # size of positional embeddings
+        hidden_size=self.hidden_size,  # size of timestep, return, state, action embeddings
         n_layer=3,  # GPT2
         n_head=1,  # GPT2
         n_inner=4 * self.hidden_size,  # GPT2 4 because we have 4 heads (r, s, a, t)

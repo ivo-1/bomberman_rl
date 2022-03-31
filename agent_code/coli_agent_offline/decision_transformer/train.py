@@ -13,8 +13,6 @@ from setup_logger import dt_logger
 from torch.nn import functional as F
 from trainer import Trainer
 
-# from decision_transformer.evaluation.evaluate_episodes import evaluate_episode, evaluate_episode_rtg
-
 
 def _get_rewards_to_go(rewards: np.array) -> np.array:
     """
@@ -42,11 +40,7 @@ def main(variant):
 
     # load dataset by combining trajectory files (every agent has its own
     # trajectory file that is generated during training) --> multiple files
-
-    # find all trajectories in trajectories folder
     list_of_trajectories = glob.glob("../trajectories/*.npy")
-    # list_of_trajectories.sort(key=os.path.getctime) # sort by creation time
-
     print(f"Found the following trajectory files: {list_of_trajectories}")
     agent_trajectories = []
     for agent_trajectory in list_of_trajectories:
@@ -54,9 +48,9 @@ def main(variant):
 
     trajectories = np.concatenate(agent_trajectories)
 
-    # save trajectories into separate lists
+    # save states, length of trajectory and full return per trajectory into separate lists
     states, trajectory_lens, returns = [], [], []
-    for trajectory in trajectories:  # one trajectory == one episode
+    for trajectory in trajectories:  # one trajectory == one episode of one agent
         states.append(trajectory[:, 0])
         trajectory_lens.append(len(trajectory[:, 0]))
         returns.append(trajectory[:, 2].sum())
@@ -65,13 +59,19 @@ def main(variant):
 
     # for input normalization (later)
     states = np.vstack(np.concatenate(states, axis=0))
-    state_mean, state_std = np.mean(states, axis=0), np.std(states, axis=0) + 1e-6
+    state_mean, state_std = (
+        np.mean(states, axis=0),
+        np.std(states, axis=0) + 1e-6,
+    )  # in case std is 0 to prevent ZeroDivisionError
 
+    # save for later access in callbacks.py
     np.save("../data/coli_states_mean.npy", state_mean)
     np.save("../data/coli_states_std.npy", state_std)
 
     num_timesteps = sum(trajectory_lens)
-    num_trajectories = len(trajectory_lens)  # we don't do any top-k %, so just take all
+    num_trajectories = len(
+        trajectory_lens
+    )  # we don't do any top-k % like the paper does, so just take all
 
     print("=" * 50)
     print(f"{len(trajectory_lens)} trajectories, {num_timesteps} timesteps found")
@@ -81,14 +81,18 @@ def main(variant):
 
     K = variant["K"]
     batch_size = variant["batch_size"]  # NOTE: needed for Trainer
-    # num_eval_episodes = variant['num_eval_episodes']
-    # pct_traj = variant.get('pct_traj', 1.)
+
+    # probability of sampling trajectory weighted by the number of timesteps in that trajectory
+    p_sample = trajectory_lens / num_timesteps
 
     def get_batch(batch_size=batch_size, max_len=K):
 
-        # get batch_size=256 random trajectory indices
+        # get batch_size random trajectory indices
         trajectory_idx = np.random.choice(
-            np.arange(num_trajectories), size=batch_size, replace=True
+            np.arange(num_trajectories),
+            size=batch_size,
+            replace=True,
+            p=p_sample,
         )
 
         states, actions, return_to_go, timesteps, mask = (
@@ -99,11 +103,11 @@ def main(variant):
             [],
         )
 
-        # construct one batch
+        # construct a batch by iterating over the randomly chosen trajectories
         for trajectory_index in trajectory_idx:
             trajectory = trajectories[
                 trajectory_index
-            ]  # current trajectory: [length_of_trajectory, 3]
+            ]  # current trajectory: [length_of_trajectory, 3] 3: (state, action, return)
 
             # get random int in [0, traj_len=10 - 1] ==> get random sequences from trajectory (obeying max_len)
             rng_offset = random.randint(0, trajectory[:, 0].shape[0] - 1)
@@ -176,8 +180,6 @@ def main(variant):
                 [np.ones((1, max_len - sequence_len, action_dim)) * -10, actions[-1]], axis=1
             )
 
-            # NOTE: left-padding done/terminals - skip for now as they don't use done_idx
-
             # left-padding rewards_to_go with zero reward-to-go
             # authors divide the returns to go with `scale` -- as per issue #32 in their repo:
             # > "scale is a normalization hyperparmeter, coarsely chosen so that the rewards would
@@ -228,7 +230,11 @@ def main(variant):
         )
         mask = torch.from_numpy(np.concatenate(mask, axis=0)).to(dtype=torch.int, device=device)
 
-        # NOTE: this is missing done_idx, as they are not used by the authors
+        # print(states.shape)
+        # print(actions)
+        # print(return_to_go)
+        # print(timesteps)
+        # print(mask)
         return states, actions, return_to_go, timesteps, mask
 
     # for testing
@@ -254,6 +260,7 @@ def main(variant):
         n_positions=1024,
         resid_pdrop=variant["dropout"],
         attn_pdrop=variant["dropout"],
+        embd_pdrop=variant["dropout"],
     )
 
     path = "/workspace/students/vu/new/bomberman_rl/agent_code/coli_agent_offline/checkpoints/2022-03-24T19:26:16/iter_10.pt"
@@ -314,26 +321,36 @@ def main(variant):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--dataset", type=str, default="medium"
-    )  # medium, medium-replay, medium-expert, expert
+
+    # training hyperparameters
     parser.add_argument("--K", type=int, default=20)  # the size of the context window
     parser.add_argument("--batch_size", type=int, default=64)
-    parser.add_argument("--embed_dim", type=int, default=128)
-    parser.add_argument("--n_layer", type=int, default=3)
-    parser.add_argument("--n_head", type=int, default=1)
+    parser.add_argument(
+        "--embed_dim", type=int, default=128
+    )  # size of timestep, return, state, action embeddings
+    parser.add_argument("--n_layer", type=int, default=3)  # GPT2
+    parser.add_argument("--n_head", type=int, default=1)  # GPT2
     parser.add_argument("--activation_function", type=str, default="relu")
-    parser.add_argument("--dropout", type=float, default=0.1)
-    parser.add_argument("--learning_rate", "-lr", type=float, default=1e-4)
-    parser.add_argument("--weight_decay", "-wd", type=float, default=1e-4)
-    parser.add_argument("--warmup_steps", type=int, default=10000)
-    parser.add_argument("--num_eval_episodes", type=int, default=100)
-    parser.add_argument("--max_iters", type=int, default=20)
-    parser.add_argument("--num_steps_per_iter", type=int, default=10)
+    parser.add_argument(
+        "--dropout", type=float, default=0.1
+    )  # probability of dropping out residuals, attentions and embeddings in GPT2
+    parser.add_argument(
+        "--learning_rate", "-lr", type=float, default=1e-4
+    )  # learning rate after warmup steps (no decay after warmup)
+    parser.add_argument("--weight_decay", "-wd", type=float, default=1e-4)  # for AdamW optimizer
+    parser.add_argument(
+        "--warmup_steps", type=int, default=10000
+    )  # warming up the learning rate for warmup_steps
+    parser.add_argument(
+        "--max_iters", type=int, default=20
+    )  # number of iterations (kind of like "epochs" although we don't see all the dataset per epoch)
+    parser.add_argument(
+        "--num_steps_per_iter", type=int, default=10000
+    )  # how many batches of size batch_size should be sampled per iteration
     parser.add_argument(
         "--scale", type=float, default=2.5
     )  # how much the rewards are scaled s.t. they fall into range [0, 10]
-    parser.add_argument("--device", type=str, default="cpu")  # FIXME: "cuda" if we train on cluster
+    parser.add_argument("--device", type=str, default="cpu")
 
     args = parser.parse_args()
     main(variant=vars(args))

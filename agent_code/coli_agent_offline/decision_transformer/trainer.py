@@ -26,7 +26,6 @@ class Trainer:
         dt_logger.info(f"====================== Iteration {iter_num} ==========================")
 
         train_losses = []
-
         train_start = time.time()
 
         self.model.train()
@@ -54,7 +53,12 @@ class Trainer:
         dt_logger.info(f"training loss std: {round(np.std(train_losses), 4)}")
 
     def train_step(self) -> float:
-        """Computes the loss for each step."""
+        """
+        Computes the loss for a single training step and performs a single optimization
+        step via backpropagation and gradient descent.
+
+        Returns the loss for each step.
+        """
 
         # get data for this training iteration
         states, actions, rtg, timesteps, attention_mask = self.get_batch(self.batch_size)
@@ -74,9 +78,11 @@ class Trainer:
         # action_preds is originally (trajectory, state, actions)
         # gets reshaped to (trajectory * state, actions), i.e. flattened by one dimension
         # attention_mask is reshaped to the same dimensionality and used to pick those actions
-        # which have an attention greater than 0, i.e. 1, meaning they are supposed to be remembered
+        # which are not masked (i.e. they are "1"), meaning they are supposed to be remembered
         act_dim = action_preds.shape[2]  # here: 6 - UP, DOWN, LEFT, RIGHT, BOMB, WAIT
-        action_preds = action_preds.reshape(-1, act_dim)[attention_mask.reshape(-1) > 0]
+        action_preds = action_preds.reshape(-1, act_dim)[
+            attention_mask.reshape(-1) > 0
+        ]  # logits (not probabilities)
         action_target = action_target.reshape(-1, act_dim)[attention_mask.reshape(-1) > 0]  # (N, 6)
         action_target = torch.argmax(action_target, axis=1)  # (N, )
 
@@ -87,7 +93,7 @@ class Trainer:
         # actual training:
         # resets gradients for this training step,
         # computes the new gradient and its norm
-        # and performs parameter update
+        # and performs parameter update via backpropagation
         self.optimizer.zero_grad()
         loss.backward()
         torch.nn.utils.clip_grad_norm_(self.model.parameters(), 0.25)
