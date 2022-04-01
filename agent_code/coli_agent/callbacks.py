@@ -674,7 +674,7 @@ def bomb_safety_direction_feature(self, game_state) -> Action:
     return _get_action(self, own_position, shortest_path)
 
 
-def neighbouring_field_feature(self, game_state):
+def neighbouring_field_feature_old(self, game_state):
     neighbours_result = [0, 0, 0, 0]
     own_position = game_state["self"][-1]
     bombs_pos = [bomb[0] for bomb in game_state["bombs"]]  # bombs position
@@ -756,34 +756,34 @@ def neighbouring_field_feature(self, game_state):
                 #             f"{idx}: Is it None?: {shortest_crate_path}"
                 # )
 
-                if shortest_crate_path is not None:
-                    # shortest_paths_list.append(shortest_crate_path)
-                    # shortest_distance_list.append(shortest_crate_distance)
+                # if shortest_crate_path is not None:
+                # shortest_paths_list.append(shortest_crate_path)
+                # shortest_distance_list.append(shortest_crate_distance)
 
-                    # self.logger.debug(f"neighbour: {nei}, path: {shortest_crate_path}")
-                    if shortest_crate_path[1] == nei:  # if next field in shortest path to a crate
-                        self.logger.debug(f"Best path: {shortest_crate_path}")
-                        if len(shortest_crate_path[1:]) > 1:
-                            self.logger.debug(
-                                f"Next field leading to nearest crate: {shortest_crate_path[1]}"
-                            )  # ?
-                            neighbours_result[idx] = 1
-                        # elif len(shortest_crate_path[1:]) == 1:
-                        #     self.logger.debug(
-                        #         f"Standing next to crate {shortest_crate_path[1]}"
-                        #     )
-                        #     neighbours_result[idx] = 2
+                # self.logger.debug(f"neighbour: {nei}, path: {shortest_crate_path}")
+                # if shortest_crate_path[1] == nei:  # if next field in shortest path to a crate
+                # self.logger.debug(f"Best path: {shortest_crate_path}")
+                # if len(shortest_crate_path[1:]) > 1:
+                # self.logger.debug(
+                #    f"Next field leading to nearest crate: {shortest_crate_path[1]}"
+                # )  # ?
+                # neighbours_result[idx] = 1
+                # elif len(shortest_crate_path[1:]) == 1:
+                #     self.logger.debug(
+                #         f"Standing next to crate {shortest_crate_path[1]}"
+                #     )
+                #     neighbours_result[idx] = 2
 
             if shortest_coin_path is not None:
                 try:
                     if shortest_coin_path[1] == nei:  # if next field in shortest path to a coin
                         neighbours_result[idx] = 1
-                        self.logger.debug(
-                            f"Next field leading to nearest coin: {shortest_coin_path[1]}"
-                        )  # ?
+                        # self.logger.debug(
+                        #    f"Next field leading to nearest coin: {shortest_coin_path[1]}"
+                        # )  # ?
 
                 except IndexError:
-                    self.logger.debug(f"Standing on coin: {shortest_coin_path[0]}")  # ?
+                    # self.logger.debug(f"Standing on coin: {shortest_coin_path[0]}")  # ?
                     continue
 
             if nei in bomb_explosion_tiles or nei in opponents_tiles:  # if in bomb or opponent zone
@@ -841,9 +841,9 @@ def neighbouring_field_feature(self, game_state):
     test_shortest_crate_path = None
 
     for idx, nei in enumerate(neighbours):
-        self.logger.debug(f"nei {idx} {nei}")
+        # self.logger.debug(f"nei {idx} {nei}")
         if game_state["field"][nei[0]][nei[1]] == 0:
-            self.logger.debug("Yes.")
+            # self.logger.debug("Yes.")
             crates_coordinates = [
                 index for index, field in np.ndenumerate(game_state["field"]) if field == 1
             ]
@@ -863,14 +863,14 @@ def neighbouring_field_feature(self, game_state):
             sorted(all_paths, key=len)
             for path in all_paths:
                 if path[1] == nei:  # if path fits neighbour
-                    self.logger.debug(f"Field {path[1]} fits in {nei}.")
+                    # self.logger.debug(f"Field {path[1]} fits in {nei}.")
                     for field_idx, field in enumerate(
                         path[1:]
                     ):  # check if path contains crate in the way
                         if game_state["field"][field[0]][field[1]] != 0:  # if so
                             path = path[: field_idx + 2]  # shorten path to this crate
                             if len(path) > 1:
-                                self.logger.debug(f"help: {path}")
+                                # self.logger.debug(f"help: {path}")
                                 path_list.append(path)
                                 break  # and break to only keep one shortest path for this
                             break
@@ -888,16 +888,253 @@ def neighbouring_field_feature(self, game_state):
             # self.logger.debug(f"neighbour {idx}, path {test_shortest_crate_path}")
         # else:
         # self.logger.debug('No.')
-    for idx, nei in enumerate(neighbours):
-        if game_state["field"][nei[0]][nei[1]] == 0:
-            for p in path_list:
-                self.logger.debug(f"field {p[1]}, nei {nei}")
-                if p[1] == nei:
-                    neighbours_result[idx] = 1
-                    break
-        break
+    # for idx, nei in enumerate(neighbours):
+    #     if game_state["field"][nei[0]][nei[1]] == 0:
+    #         for p in path_list:
+    #             self.logger.debug(f"field {p[1]}, nei {nei}")
+    #             if p[1] == nei:
+    #                 neighbours_result[idx] = 1
+    #                 break
+    #     break
 
     # self.logger.debug(f'all: {path_list[0]}')
+    self.logger.debug(f"[down, up, right, left]: {neighbours_result}")
+
+    return neighbours_result
+
+
+def neighbouring_field_feature(self, game_state):
+    neighbours_result = [0, 0, 0, 0]
+    own_position = game_state["self"][-1]
+
+    bombs_pos = [bomb[0] for bomb in game_state["bombs"]]  # bombs position
+    active_explosions = [
+        index
+        for index, field in np.ndenumerate(game_state["explosion_map"])
+        if field != 0  # active explosions
+    ]
+    opponents = [op[-1] for op in game_state["others"]]
+
+    # Aileens code + Trangs edit
+    bomb_explosion_tiles = []  # bomb zone
+    for bomb in game_state["bombs"]:
+        bomb_explosion_tiles += get_neighboring_tiles_until_wall(bomb[0], 3, game_state)
+
+    opponents_tiles = []  # opponents zone
+    for bomb in game_state["others"]:
+        opponents_tiles += get_neighboring_tiles_until_wall(bomb[-1], 3, game_state)
+
+    graph = _get_graph(self, game_state)
+    graph_with_crates = _get_graph(self, game_state, crates_as_obstacles=False)
+
+    crates_coordinates = [
+        index for index, field in np.ndenumerate(game_state["field"]) if field == 1
+    ]
+
+    new_crates_coordinates = [
+        index for index, field in np.ndenumerate(game_state["field"]) if field == 1
+    ]
+
+    spec_graph = _get_graph(self, game_state, crates_as_obstacles=False)
+
+    shortest_coin_path = None
+    shortest_coin_distance = 1000
+    shortest_crate_path = None
+    shortest_crate_distance = 1000
+    new_shortest_crate_path = None
+    new_shortest_crate_distance = 1000
+
+    neighbours = _get_neighboring_tiles(own_position, 1)
+    new_neighbours = _get_neighboring_tiles(own_position, 1)
+    for idx, nei in enumerate(neighbours):
+        if game_state["field"][nei[0]][nei[1]] == 0:  # if free field
+            # free_tiles = 0
+
+            for coin in game_state["coins"]:
+                if coin not in graph or coin in bomb_explosion_tiles:
+                    continue
+                try:
+                    (
+                        current_shortest_path,
+                        current_shortest_distance,
+                    ) = _find_shortest_path(  # find shortest path to each coin
+                        graph, own_position, coin
+                    )
+                    if (
+                        current_shortest_distance < shortest_coin_distance
+                    ):  # find the overall shortest path to a coin
+                        shortest_coin_path = current_shortest_path
+                        shortest_coin_distance = current_shortest_distance
+
+                except nx.exception.NetworkXNoPath:
+                    continue
+
+            if not shortest_coin_path:  # if no coin available
+                # self.logger.debug(f"{crates_coordinates}")
+
+                for crate in new_crates_coordinates:  # crates_coordinates:
+                    if crate not in spec_graph or crate in bomb_explosion_tiles:
+                        #                     if crate not in graph_with_crates or crate in bomb_explosion_tiles:
+                        continue
+                    try:
+                        current_shortest_path, current_shortest_distance = _find_shortest_path(
+                            # graph_with_crates,
+                            spec_graph,
+                            own_position,
+                            crate,  # find shortest path to each coin
+                        )
+                        if (
+                            current_shortest_distance < shortest_crate_distance
+                        ):  # find the overall shortest path to a coin
+                            shortest_crate_path = current_shortest_path
+                            shortest_crate_distance = current_shortest_distance
+
+                    except nx.exception.NetworkXNoPath:
+                        continue
+
+                if shortest_crate_path is not None:
+                    # shortest_paths_list.append(shortest_crate_path)
+                    # shortest_distance_list.append(shortest_crate_distance)
+
+                    # self.logger.debug(f"neighbour: {nei}, path: {shortest_crate_path}")
+                    if shortest_crate_path[1] == nei:  # if next field in shortest path to a crate
+                        self.logger.debug(f"Best path: {shortest_crate_path}")
+                        if len(shortest_crate_path[1:]) > 1:
+                            # self.logger.debug(
+                            #    f"Next field leading to nearest crate: {shortest_crate_path[1]}"
+                            # )
+                            # self.logger.debug(f"This neighbour: {nei} get's a 1.")
+                            neighbours_result[idx] = 1
+                        elif len(shortest_crate_path[1:]) == 1:
+                            # self.logger.debug(
+                            #     f"Standing next to crate {shortest_crate_path[1]}. See 1010"
+                            # )
+                            neighbours_result[idx] = 2
+
+            if shortest_coin_path is not None:
+                try:
+                    if shortest_coin_path[1] == nei:  # if next field in shortest path to a coin
+                        neighbours_result[idx] = 1
+                        # self.logger.debug(
+                        #    f"Next field leading to nearest coin: {shortest_coin_path[1]}"
+                        # )  # ?
+
+                except IndexError:
+                    # self.logger.debug(f"Standing on coin: {shortest_coin_path[0]}")  # ?
+                    continue
+
+        if game_state["field"][nei[0]][nei[1]] == 1:
+            self.logger.debug(f"Standing next to crate !!!")
+            spec_graph.remove_nodes_from([nei])
+            # self.logger.debug(f'Remove {nei} from graph')
+            # new_crates_coordinates = [
+            #     index for index, field in np.ndenumerate(game_state["field"]) if field == 1
+            #     ]
+            new_crates_coordinates.remove(nei)
+            # self.logger.debug(f'Remove {nei} from crate coordinates')
+            new_neighbours.remove(nei)
+            # self.logger.debug(f'Remove {nei} from neighbours')
+
+            for new_idx, new_nei in enumerate(new_neighbours):
+                for coin in game_state["coins"]:
+                    if coin not in graph or coin in bomb_explosion_tiles:
+                        continue
+                    try:
+                        (
+                            current_shortest_path,
+                            current_shortest_distance,
+                        ) = _find_shortest_path(  # find shortest path to each coin
+                            graph, own_position, coin
+                        )
+                        if (
+                            current_shortest_distance < shortest_coin_distance
+                        ):  # find the overall shortest path to a coin
+                            shortest_coin_path = current_shortest_path
+                            shortest_coin_distance = current_shortest_distance
+
+                    except nx.exception.NetworkXNoPath:
+                        continue
+
+                if not shortest_coin_path:  # if no coin available
+                    # self.logger.debug(f"{crates_coordinates}")
+                    # self.logger.debug(f'There are {len(new_crates_coordinates)} in on this board.')
+                    for crate in new_crates_coordinates:
+                        if crate not in spec_graph or crate in bomb_explosion_tiles:
+                            continue
+                        try:
+                            current_shortest_path, current_shortest_distance = _find_shortest_path(
+                                spec_graph,
+                                own_position,
+                                crate,  # find shortest path to each coin
+                            )
+                            if (
+                                current_shortest_distance < new_shortest_crate_distance
+                            ):  # find the overall shortest path to a coin
+                                new_shortest_crate_path = current_shortest_path
+                                new_shortest_crate_distance = current_shortest_distance
+
+                        except nx.exception.NetworkXNoPath:
+                            continue
+
+                    # self.logger.debug(f"neighbour: {new_nei}, path: {new_shortest_crate_path}")
+                    if new_shortest_crate_path is not None:
+                        # shortest_paths_list.append(shortest_crate_path)
+                        # shortest_distance_list.append(shortest_crate_distance)
+
+                        # self.logger.debug(f"neighbour: {nei}, path: {new_shortest_crate_path}")
+                        if (
+                            new_shortest_crate_path[1] == new_nei
+                            and new_nei not in bomb_explosion_tiles
+                        ):  # if next field in shortest path to a crate
+                            # self.logger.debug(f"Best path: {shortest_crate_path}")
+                            if len(new_shortest_crate_path[1:]) > 1:
+                                # self.logger.debug(
+                                #    f"Next field leading to nearest crate: {shortest_crate_path[1]}"
+                                # )
+                                # self.logger.debug(f"This (new) neighbour: {new_nei} get's a 1.")
+                                neighbours_result[new_idx] = 1
+                                # self.logger.debug(f'New shortest path {new_shortest_crate_path}')
+                            elif len(new_shortest_crate_path[1:]) == 1:
+                                # self.logger.debug(
+                                #     f"Standing next to crate {shortest_crate_path[1]}"
+                                # )
+                                # self.logger.debug(f"This (new) neighbour: {new_nei} get's a 2.")
+                                neighbours_result[new_idx] = 2
+
+                if shortest_coin_path is not None:
+                    try:
+                        if (
+                            shortest_coin_path[1] == new_nei
+                        ):  # if next field in shortest path to a coin
+                            neighbours_result[new_idx] = 1
+                            # self.logger.debug(
+                            #    f"Next field leading to nearest coin: {shortest_coin_path[1]}"
+                            # )  # ?
+
+                    except IndexError:
+                        # self.logger.debug(f"Standing on coin: {shortest_coin_path[0]}")  # ?
+                        continue
+
+        # self.logger.debug(f'1. {shortest_crate_path}')
+        # self.logger.debug(f'2. {new_shortest_crate_path}')
+
+        #         if nei in bombs_pos or nei in opponents or nei in active_explosions:
+        if (
+            nei in bombs_pos
+            or nei in opponents
+            or nei in active_explosions
+            or game_state["field"][nei[0]][nei[1]] == 1
+        ):
+            neighbours_result[idx] = 2
+
+        if game_state["field"][nei[0]][nei[1]] != 0:
+            # self.logger.debug(f"This (new) neighbour: {nei} get's a 1. See 1118")
+            neighbours_result[idx] = 2
+
+        elif nei in bomb_explosion_tiles or nei in opponents_tiles:  # if in bomb or opponent zone
+            # self.logger.debug(f"This neighbour: {nei} get's a 3.")
+            neighbours_result[idx] = 3
+
     self.logger.debug(f"[down, up, right, left]: {neighbours_result}")
 
     return neighbours_result
