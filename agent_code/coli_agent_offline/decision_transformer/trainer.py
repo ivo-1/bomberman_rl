@@ -62,7 +62,7 @@ class Trainer:
 
         # get data for this training iteration
         states, actions, rtg, timesteps, attention_mask = self.get_batch(self.batch_size)
-        # in order to calculate loss, we need targets and predictions
+
         # cloning to circumvent pass-by-reference
         action_target = actions.clone()
 
@@ -70,25 +70,31 @@ class Trainer:
         action_preds = self.model.forward(
             states,
             actions,
-            rtg[:, :-1],  # last return-to-go in the context window of each trajectory
+            rtg[
+                :, :-1
+            ],  # exclude last return-to-go of each trajectory (so that shape is (batch_size, K, 1))
             timesteps,
             attention_mask=attention_mask,
-        )
+        )  # these are logits (not probabilities)
 
-        # action_preds is originally (trajectory, state, actions)
-        # gets reshaped to (trajectory * state, actions), i.e. flattened by one dimension
-        # attention_mask is reshaped to the same dimensionality and used to pick those actions
-        # which are not masked (i.e. they are "1"), meaning they are supposed to be remembered
-        act_dim = action_preds.shape[2]  # here: 6 - UP, DOWN, LEFT, RIGHT, BOMB, WAIT
-        action_preds = action_preds.reshape(-1, act_dim)[
+        action_dim = action_preds.shape[2]
+
+        # action_preds is originally (batch_size, K, action_dim)
+        # this is first reshaped to (batch_size * K, actions), i.e. we
+        # forget the batches and just combine them for the loss computation,
+        # and then remove all action predictions which were masked out (i.e. 0)
+        action_preds = action_preds.reshape(-1, action_dim)[attention_mask.reshape(-1) > 0]
+
+        # action_target is handled the same way but finally we only take the
+        # argmax (the index were the one-hot-encoded vector is 1), because the loss
+        # function demands that we just compare to the correct class index
+        action_target = action_target.reshape(-1, action_dim)[
             attention_mask.reshape(-1) > 0
-        ]  # logits (not probabilities)
-        action_target = action_target.reshape(-1, act_dim)[attention_mask.reshape(-1) > 0]  # (N, 6)
-        action_target = torch.argmax(action_target, axis=1)  # (N, )
+        ]  # (batch_size * K, 6)
+        action_target = torch.argmax(action_target, axis=1)  # (batch_size * K, )
 
         # is defined in train.py as cross-entropy loss
         loss = self.loss_fn(action_preds, action_target)
-        detached_loss = loss.detach().cpu().item()
 
         # actual training:
         # resets gradients for this training step,
@@ -99,6 +105,7 @@ class Trainer:
         torch.nn.utils.clip_grad_norm_(self.model.parameters(), 0.25)
         self.optimizer.step()
 
+        detached_loss = loss.detach().cpu().item()
         with torch.no_grad():
             dt_logger.info(f"training action error: {round(detached_loss, 4)}")
 

@@ -1,4 +1,4 @@
-# don't confuse with train.py files used for --train; we don't do online RL
+# don't confuse with train.py files used for --train; we don't do online RL!
 import argparse
 import glob
 import os
@@ -25,21 +25,25 @@ def _get_rewards_to_go(rewards: np.array) -> np.array:
     returns_to_go = np.zeros_like(rewards)
     returns_to_go[0] = sum(rewards)  # take sum of array as first value
     for i in range(len(returns_to_go) - 1):
-        returns_to_go[i + 1] = (
-            returns_to_go[i] - rewards[i]
-        )  # compute next value in rewards_to_go by subtracting next val in x from current val in rewards_to_go
+        returns_to_go[i + 1] = returns_to_go[i] - rewards[i]
     return returns_to_go
 
 
 def main(variant):
+    """
+    Main function for training the model.
+
+    Gets the data, creates the model, trains it and saves it
+    after every iteration in decision_transformer/checkpoints.
+    """
     device = variant.get("device", "cuda")
 
-    max_ep_len = 401
+    max_ep_len = 400
     state_dim = 49
     action_dim = 6
 
     # load dataset by combining trajectory files (every agent has its own
-    # trajectory file that is generated during training) --> multiple files
+    # trajectory file that is generated during training)
     list_of_trajectories = glob.glob("../trajectories/*.npy")
     print(f"Found the following trajectory files: {list_of_trajectories}")
     agent_trajectories = []
@@ -48,7 +52,7 @@ def main(variant):
 
     trajectories = np.concatenate(agent_trajectories)
 
-    # save states, length of trajectory and full return per trajectory into separate lists
+    # for each trajectory: save its states, length of trajectory and full return into separate lists
     states, trajectory_lens, returns = [], [], []
     for trajectory in trajectories:  # one trajectory == one episode of one agent
         states.append(trajectory[:, 0])
@@ -62,9 +66,9 @@ def main(variant):
     state_mean, state_std = (
         np.mean(states, axis=0),
         np.std(states, axis=0) + 1e-6,
-    )  # in case std is 0 to prevent ZeroDivisionError
+    )  # adding small number in case std is 0 (to prevent ZeroDivisionError)
 
-    # save for later access in callbacks.py
+    # save for later access in callbacks.py where we need to normalize states again
     np.save("../data/coli_states_mean.npy", state_mean)
     np.save("../data/coli_states_std.npy", state_std)
 
@@ -86,7 +90,18 @@ def main(variant):
     p_sample = trajectory_lens / num_timesteps
 
     def get_batch(batch_size=batch_size, max_len=K):
+        """
+        Returns a batch of sub-trajectories, meaning
+        random trajectories of length max_len from the training data.
 
+        More precisely:
+
+        states: [batch_size, max_len, state_dim]
+        actions: [batch_size, max_len, action_dim]
+        return_to_go: [batch_size, max_len + 1, 1]
+        timesteps: [batch_size, max_len]
+        mask: [batch_size, max_len]
+        """
         # get batch_size random trajectory indices
         trajectory_idx = np.random.choice(
             np.arange(num_trajectories),
@@ -107,20 +122,16 @@ def main(variant):
         for trajectory_index in trajectory_idx:
             trajectory = trajectories[
                 trajectory_index
-            ]  # current trajectory: [length_of_trajectory, 3] 3: (state, action, return)
+            ]  # current trajectory: [length_of_trajectory, 3] where 3: (state, action, return)
 
-            # get random int in [0, traj_len=10 - 1] ==> get random sequences from trajectory (obeying max_len)
+            # get random int in [0, traj_len- 1]
             rng_offset = random.randint(0, trajectory[:, 0].shape[0] - 1)
 
-            # the reshapes are just torch unsqueezes but with numpy, i.e. shape: [2, 6] --> [1, 2, 6]
-            # -1 just means inferring the one that's left over
-            # assert np.expand_dims(
-            #     trajectory[:, 0][rng_offset : rng_offset + max_len], axis=0
-            # ) == trajectory[:, 0][rng_offset : rng_offset + max_len].reshape(1, -1, state_dim)
+            # get the states and actions from the sequence of randomly chosen sequence starting at rng_offset
             states.append(
                 np.vstack(trajectory[:, 0][rng_offset : rng_offset + max_len]).reshape(
                     1, -1, state_dim
-                )  # (1, length_of_trajectory chosen, 49)
+                )  # (1, length_of_sequence, state_dim)
             )
             actions.append(
                 np.vstack(trajectory[:, 1][rng_offset : rng_offset + max_len]).reshape(
@@ -128,51 +139,41 @@ def main(variant):
                 )
             )
 
-            # NOTE: we don't need 'done' signal
+            sequence_len = states[-1].shape[
+                1
+            ]  # actual length of current sequence (might be shorter than max_len)
 
             timesteps.append(
-                np.arange(rng_offset, rng_offset + states[-1].shape[1]).reshape(
-                    1, -1
-                )  # [1, length_of_trajectory]
-            )  # e.g. append [[399, 400, 401, 402]]
+                np.arange(rng_offset, rng_offset + sequence_len).reshape(1, -1)  # [1, sequence_len]
+            )
+
             timesteps[-1][timesteps[-1] >= max_ep_len] = (
                 max_ep_len - 1
-            )  # e.g. timesteps [[399, 400, 401, 402]] ==> [[399, 400, 400, 400]] when max_ep_len = 401 (1, length_of_trajectory)
+            )  # e.g. timesteps[-1] was [[396, 397, 398, 399, 400]] ==> [[396, 397, 398, 399, 399]] when max_ep_len = 400 (1, length_of_trajectory)
 
-            # all future rewards (even over max_len) so that the calculation of returns to go is correct
-            rewards_to_go_from_offset = _get_rewards_to_go(
-                trajectory[:, 2][rng_offset:]
-            )  # (length_of_trajectory from cutoff til end,)
+            # all future rewards (will usually be bigger than max_len) so that the calculation of returns to go is correct
+            rewards_to_go_from_offset = _get_rewards_to_go(trajectory[:, 2][rng_offset:])
 
-            # append only max_len allowed sequence
-            # NOTE: must be cast!
+            # append only max_len allowed sequence of rewards to go
+            # NOTE: must be cast to int!
             return_to_go.append(
-                rewards_to_go_from_offset[: states[-1].shape[1] + 1].astype(int).reshape(1, -1, 1)
-            )  # (1, length_of_trajectory, 1)
+                rewards_to_go_from_offset[: sequence_len + 1].astype(int).reshape(1, -1, 1)
+            )  # (1, sequence_len + 1, 1) unless sequence_len <= max_len
 
-            # there is exactly one more state seen in the current sequence than rewards in the current sequence
-            # --> add one zero reward to go
-            # this happens when the current sampled sequence goes "over" the length of the trajectory its sampled from
-            # e.g. with max_len = 10
-            # trajectory has timesteps: [..., 128, 129]
-            # rng_offset happens to be: 125
-            # --> timesteps: 125, 126, ..., 134 are looked at (because max_len = 10) but of course
-            # there are no timesteps beyond 129 (later on this is padded)
-            if return_to_go[-1].shape[1] <= states[-1].shape[1]:
+            # this happens when the current sampled sequence is
+            # shorter than max_len, i.e. because the offset was high
+            # enough to reach over or exactly until the end of the trajectory
+            # ==> pad it, s.t. rtg[-1] has shape (1, sequence_len + 1, 1)
+            if return_to_go[-1].shape[1] == sequence_len:
                 return_to_go[-1] = np.concatenate(
                     [return_to_go[-1], np.zeros((1, 1, 1), dtype=int)], axis=1
                 )
 
-            sequence_len = states[-1].shape[1]
-
-            # left-padding with zero states if our sequence is shorter than max_len
-            # this happens when the offset is high and the rest of the trajectory till episode
-            # finish is shorter than max_len
-            # --> probably safer to not encode any field state with 0, but rather start with one
+            # left-padding with zero states if sequence_len is shorter than max_len
             states[-1] = np.concatenate(
                 [np.zeros((1, max_len - sequence_len, state_dim), dtype=int), states[-1]], axis=1
             )
-            # normalization
+            # normalization of states
             states[-1] = (states[-1] - state_mean) / state_std
 
             # left-padding with dummy action (not one-hot encoded, but just whole vector -10)
@@ -204,10 +205,6 @@ def main(variant):
                 )
             )
 
-        # print(len(states)) # batch_size because we have batch_size sequences in the batch
-        # print(states[0].shape) # (1, max_len, state_dim)
-        # print(states[0].dtype) # int64
-
         # concatenate all the stuff of all the sequences in the batch to be behind each other and prepare them to be sent to torch
         states = torch.from_numpy(np.concatenate(states, axis=0)).to(
             dtype=torch.float32, device=device
@@ -217,11 +214,6 @@ def main(variant):
             dtype=torch.float32, device=device
         )
 
-        # print(len(rewards))
-        # print(rewards[0].shape) # (1, 50, 1) == (1, max_len, reward_dim (i.e. it's a number --> 1))
-        # print(rewards[0].dtype)
-
-        # done_idx = torch.from_numpy(np.concatenate(done_idx, axis=0)).to(dtype=torch.long, device=device)
         return_to_go = torch.from_numpy(np.concatenate(return_to_go, axis=0)).to(
             dtype=torch.float32, device=device
         )
@@ -230,22 +222,7 @@ def main(variant):
         )
         mask = torch.from_numpy(np.concatenate(mask, axis=0)).to(dtype=torch.int, device=device)
 
-        # print(states.shape)
-        # print(actions)
-        # print(return_to_go)
-        # print(timesteps)
-        # print(mask)
         return states, actions, return_to_go, timesteps, mask
-
-    # for testing
-    # s, a, r, rtg, t, mask = get_batch(batch_size=8, max_len=50)
-    # print(rtg.shape)
-    # print(a)
-    # print(r)
-    # print(rtg)
-    # print(t)
-    # print(mask)
-    # return
 
     model = DecisionTransformer(
         state_dim=state_dim,
@@ -263,8 +240,8 @@ def main(variant):
         embd_pdrop=variant["dropout"],
     )
 
-    path = "/workspace/students/vu/new/bomberman_rl/agent_code/coli_agent_offline/checkpoints/2022-03-24T19:26:16/iter_10.pt"
-
+    # NOTE: uncomment if you want to continue training from a checkpoint
+    # path = "<PATH_TO_CHECKPOINT>"
     # model.load_state_dict(torch.load(path))
 
     model.to(device)

@@ -1,4 +1,4 @@
-from ast import Index
+from tkinter.messagebox import NO
 
 import torch
 import torch.nn as nn
@@ -18,7 +18,7 @@ class DecisionTransformer(nn.Module):
         action_dim,  # how many actions one can take - 6 NOTE: actions are one-hot-encoded
         hidden_size,  # size of timestep, return, state, action embeddings
         max_length=None,  # size of context window
-        max_ep_len=401,  # game of bomberman lasts max. 401 steps
+        max_ep_len=400,  # game of bomberman lasts max. 400 steps
         # squish values of action vector output to be between -1 and 1
         # NOTE: these are the "logits", as the cross-entropy loss includes
         # a softmax layer it is correct to not use softmax before
@@ -39,7 +39,7 @@ class DecisionTransformer(nn.Module):
         )
 
         # NOTE: the only difference between this GPT2Model and the default Huggingface version
-        # is that the positional embeddings are removed (since we'll add those ourselves)
+        # is that the positional embeddings are removed (since these are simply added here in line 43)
         self.transformer = GPT2Model(config)
 
         self.embed_timestep = nn.Embedding(max_ep_len, hidden_size)  # own positional embedding
@@ -55,10 +55,9 @@ class DecisionTransformer(nn.Module):
         )  # needs to be lists, so we can unpack them (else case cannot just be None)
         self.predict_action = nn.Sequential(
             nn.Linear(hidden_size, self.action_dim), *self.tanh
-        )  # nn.Linear --> turn hidden vector into action vector of size action_dim - run tanh over the result if action_tanh is True
+        )  # nn.Linear --> turn hidden vector into action vector of size action_dim and then run tanh over the result if action_tanh is True
 
     def forward(self, states, actions, returns_to_go, timesteps, attention_mask=None):
-        # print(attention_mask.shape) # (B, K)
         batch_size, seq_length = (
             states.shape[0],
             states.shape[1],
@@ -66,9 +65,6 @@ class DecisionTransformer(nn.Module):
 
         # NOTE: attention mask for GPT: 1 if can be attended to, 0 if not - not to confuse with
         # masking *within* the transformer to calculate attention scores
-
-        # only if None, create a mask of ones
-        # attention_mask = torch.ones((batch_size, seq_length), dtype=torch.long)
 
         # embed each modality with a different head
         state_embeddings = self.embed_state(states)
@@ -82,32 +78,12 @@ class DecisionTransformer(nn.Module):
         returns_embeddings = returns_embeddings + time_embeddings
 
         # this makes the sequence look like (R_1, s_1, a_1, R_2, s_2, a_2, ...)
-        # which works nice in an autoregressive sense since states predict actions
-
-        # print(
-        #     f"Stack shape: {torch.stack((returns_embeddings, state_embeddings, action_embeddings), dim=1).shape}"
-        # )
-        # print(
-        #     f"Permuted stack shape: {torch.stack((returns_embeddings, state_embeddings, action_embeddings), dim=1).permute(0, 2, 1, 3).shape}"
-        # )
-
-        # # original version
-        # print(
-        #     f"Reshaped, permuted stack shape: {torch.stack((returns_embeddings, state_embeddings, action_embeddings), dim=1).permute(0, 2, 1, 3).reshape(batch_size, 3 * seq_length, self.hidden_size).shape}"
-        # )
-
-        # print(
-        #     f"Reshaped, permuted stack shape: {torch.stack((returns_embeddings, state_embeddings, action_embeddings), dim=1).reshape(batch_size, -1, self.hidden_size).shape}"
-        # )
-
         stacked_inputs = (
             torch.stack(
                 (returns_embeddings, state_embeddings, action_embeddings), dim=1
-            )  # (B, 3, K, hidden_size) where 3 consists of return, state, action
+            )  # (B, 3, K, hidden_size) where 3 is for return, state, action
             .permute(0, 2, 1, 3)  # (B, K, 3, hidden_size)
-            .reshape(
-                batch_size, -1, self.hidden_size  # (B, 3*K, hidden_size)
-            )  # NOTE: 3*seq_length because one step consists of 3 tokens returns, state and action
+            .reshape(batch_size, -1, self.hidden_size)  # (B, 3*K, hidden_size)
         )
         stacked_inputs = self.embed_ln(stacked_inputs)  # layer normalization
 
@@ -116,17 +92,9 @@ class DecisionTransformer(nn.Module):
             torch.stack((attention_mask, attention_mask, attention_mask), dim=1)
             .permute(0, 2, 1)
             .reshape(batch_size, -1)
-        )
-        # print(stacked_attention_mask.shape)
-
-        # print(torch.stack((attention_mask, attention_mask, attention_mask), dim=1).shape)
-        # print(torch.stack((attention_mask, attention_mask, attention_mask), dim=1).permute(0, 2, 1).shape)
-
-        # original version
-        # print(torch.stack((attention_mask, attention_mask, attention_mask), dim=1).reshape(batch_size, 3*seq_length).shape)
-
-        # NOTE: input embeddings = stacked embeddings of (R, s, a) and all of that embedded linearly
-        # we feed in the input embeddings (not word indices as in NLP) to the model
+        )  # (B, 3*K)
+        # NOTE: input embeddings to the transformer are just
+        # stacked embeddings of (R, s, a) and all of that embedded linearly via layer normalization
         transformer_outputs = self.transformer(
             inputs_embeds=stacked_inputs,
             attention_mask=stacked_attention_mask,
@@ -139,36 +107,40 @@ class DecisionTransformer(nn.Module):
             0, 2, 1, 3
         )  # (B, 3, K, hidden_size)
 
-        # get predictions
-        # return_preds = self.predict_return(x[:,2])  # predict next return given state and action
-        # state_preds = self.predict_state(x[:,2])    # predict next state given state and action
-
         # [:, 1] contains the state embeddings which were created by the transformer which
         # uses self-attention and thus contains informataion of *all* previous states,
         # actions and rewards
         action_preds = self.predict_action(
             x[:, 1]
-        )  # predict next action given state x[:, 1] which is (B, K, hidden_size)
-
-        # print(action_preds.shape)
+        )  # predict next action given state x[:, 1] which has shape (B, K, hidden_size)
         return action_preds  # (B, K, action_dim)
 
-    def get_action(self, states, actions, returns_to_go, timesteps):  # only at INFERENCE
-        states = states.reshape(1, -1, self.state_dim)
-        actions = actions.reshape(1, -1, self.action_dim)
-        returns_to_go = returns_to_go.reshape(1, -1, 1)
-        timesteps = timesteps.reshape(1, -1)
+    # only at INFERENCE, where we start without a sequence of length K
+    # and where we will have sequences longer than K
+    # i.e. this function makes sure everything is padded to length K
+    # just like the model was trained only with sequences of length K
+    def get_action(self, states, actions, returns_to_go, timesteps):
+        states = states.reshape(1, -1, self.state_dim)  # (1, sequence_len, state_dim)
+        actions = actions.reshape(
+            1, -1, self.action_dim
+        )  # (1, sequence_len - 1, action_dim) because of course the action hasn't been taken yet
+        returns_to_go = returns_to_go.reshape(1, -1, 1)  # (1, sequence_len, 1)
+        timesteps = timesteps.reshape(1, -1)  # (1, sequence_len - 1)
 
+        # only consider the last max_length tokens
         states = states[:, -self.max_length :]
         actions = actions[:, -self.max_length :]
         returns_to_go = returns_to_go[:, -self.max_length :]
         timesteps = timesteps[:, -self.max_length :]
 
-        # pad all tokens to sequence length
+        # left-pad everything to max_length if we haven't yet seen max_length tokens and
+        # conceal the padding with the attention mask
         attention_mask = torch.cat(
             [torch.zeros(self.max_length - states.shape[1]), torch.ones(states.shape[1])]
         )
-        attention_mask = attention_mask.to(dtype=torch.long, device=states.device).reshape(1, -1)
+        attention_mask = attention_mask.to(dtype=torch.long, device=states.device).reshape(
+            1, -1
+        )  # (1, max_length)
         states = torch.cat(
             [
                 torch.zeros(
@@ -210,6 +182,8 @@ class DecisionTransformer(nn.Module):
             dim=1,
         ).to(dtype=torch.long)
 
+        # now that we have padded everything to the same context window the model
+        # was trained with, we can call the model
         action_preds = self.forward(
             states, actions, returns_to_go, timesteps, attention_mask=attention_mask
         )

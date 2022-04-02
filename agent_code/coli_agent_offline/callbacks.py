@@ -58,7 +58,7 @@ def setup(self):
         state_dim=self.state_dim,  # how many entries the feature vector has
         action_dim=self.action_dim,  # how many actions one can take
         max_length=self.context_window,  # context window
-        max_ep_len=401,  # game of bomberman lasts max. 401 steps
+        max_ep_len=401,  # game of bomberman lasts max. 400 steps (starts at 0 and ends *after* 400 inputs)
         hidden_size=self.hidden_size,  # size of timestep, return, state, action embeddings
         n_layer=3,  # GPT2
         n_head=1,  # GPT2
@@ -77,7 +77,9 @@ def setup(self):
 
     self.target_return = torch.tensor(
         9 / self.scale, device=self.device, dtype=torch.float32
-    ).reshape(1, 1)
+    ).reshape(
+        1, 1
+    )  # NOTE: set the target return here
 
     # keep track of states, actions, rewards, timesteps and initialize with zeros/empty
     self.states = torch.zeros((1, self.state_dim), device=self.device)  # zero-state
@@ -85,7 +87,7 @@ def setup(self):
     self.rewards = torch.zeros(0, device=self.device)  # empty
     self.timesteps = torch.tensor(0, device=self.device, dtype=torch.long).reshape(
         1, 1
-    )  # zero-timestep
+    )  # empty timestep
 
 
 def act(self, game_state: dict) -> str:
