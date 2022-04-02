@@ -272,32 +272,32 @@ def reward_from_events(self, events: List[str]) -> int:
     """
 
     game_rewards = {
-        # e.BOMB_DROPPED: 10,  # adjust aggressiveness
-        # # e.BOMB_EXPLODED: 0,
-        # e.COIN_COLLECTED: 50,
-        # # e.COIN_FOUND: 5,  # direct consequence from crate destroyed, redundant reward?
-        # e.WAITED: -3,  # adjust passivity
-        # e.CRATE_DESTROYED: 4,
-        # e.GOT_KILLED: -50,  # adjust passivity
-        # e.KILLED_OPPONENT: 200,
-        # e.KILLED_SELF: -10,  # you dummy --- this *also* triggers GOT_KILLED
-        # e.OPPONENT_ELIMINATED: 0.05,  # good because less danger or bad because other agent scored points?
-        # # e.SURVIVED_ROUND: 0,  # could possibly lead to not being active - actually penalize if agent too passive?
-        # # necessary? (maybe for penalizing trying to move through walls/crates) - yes, seems to be necessary to
-        # # learn that one cannot place a bomb after another placed bomb is still not exploded
-        # e.INVALID_ACTION: -10,
-        # WAS_BLOCKED: -20,
-        # MOVED: -0.1,
-        # PROGRESSED: 10,  # higher?
-        # STAGNATED: -3,  # higher? lower?
-        # FLED: 15,
-        # SUICIDAL: -15,
-        # DECREASED_DISTANCE: 8,
-        # INCREASED_DISTANCE: -8.1,  # higher? lower? idk
-        # INCREASED_SURROUNDING_CRATES: 1.5,
-        # DECREASED_SURROUNDING_CRATES: -1.6,
-        # INCREASED_BOMB_DISTANCE: 5,
-        # DECREASED_BOMB_DISTANCE: -5.1,
+        e.BOMB_DROPPED: 10,  # adjust aggressiveness
+        # e.BOMB_EXPLODED: 0,
+        e.COIN_COLLECTED: 50,
+        # e.COIN_FOUND: 5,  # direct consequence from crate destroyed, redundant reward?
+        e.WAITED: -3,  # adjust passivity
+        e.CRATE_DESTROYED: 4,
+        e.GOT_KILLED: -50,  # adjust passivity
+        e.KILLED_OPPONENT: 200,
+        e.KILLED_SELF: -10,  # you dummy --- this *also* triggers GOT_KILLED
+        e.OPPONENT_ELIMINATED: 0.05,  # good because less danger or bad because other agent scored points?
+        # e.SURVIVED_ROUND: 0,  # could possibly lead to not being active - actually penalize if agent too passive?
+        # necessary? (maybe for penalizing trying to move through walls/crates) - yes, seems to be necessary to
+        # learn that one cannot place a bomb after another placed bomb is still not exploded
+        e.INVALID_ACTION: -10,
+        WAS_BLOCKED: -20,
+        MOVED: -0.1,
+        PROGRESSED: 10,  # higher?
+        STAGNATED: -3,  # higher? lower?
+        FLED: 15,
+        SUICIDAL: -15,
+        DECREASED_DISTANCE: 8,
+        INCREASED_DISTANCE: -8.1,  # higher? lower? idk
+        INCREASED_SURROUNDING_CRATES: 1.5,
+        DECREASED_SURROUNDING_CRATES: -1.6,
+        INCREASED_BOMB_DISTANCE: 5,
+        DECREASED_BOMB_DISTANCE: -5.1,
         FOLLOWED_DIRECTION: 5,  # possibly create penalty
         NOT_FOLLOWED_DIRECTION: -6,
     }
