@@ -12,7 +12,7 @@ def setup(self):
     """Sets up everything. (First call)"""
 
     self.old_score = 0
-    self.timestep = 1
+    self.timestep = 0
     self.current_round = 0
 
     self.logger.info("Loading model from saved state.")
@@ -58,7 +58,7 @@ def setup(self):
         state_dim=self.state_dim,  # how many entries the feature vector has
         action_dim=self.action_dim,  # how many actions one can take
         max_length=self.context_window,  # context window
-        max_ep_len=401,  # game of bomberman lasts max. 400 steps (starts at 0 and ends *after* 400 inputs)
+        max_ep_len=400,  # game of bomberman lasts max. 400 steps (starts at 0 and ends *after* 400 inputs)
         hidden_size=self.hidden_size,  # size of timestep, return, state, action embeddings
         n_layer=3,  # GPT2
         n_head=1,  # GPT2
@@ -69,14 +69,14 @@ def setup(self):
         attn_pdrop=self.dropout,  # GPT2
     )
 
-    path = "/Users/ivo/Studium/fml/bomberman_rl/agent_code/coli_agent_offline/decision_transformer/checkpoints/2022-03-29T22:30:41/iter_10.pt"
+    path = "/Users/ivo/Studium/fml/bomberman_rl/agent_code/coli_agent_offline/decision_transformer/checkpoints/2022-04-02T19:23:19/iter_05.pt"
 
     self.model.load_state_dict(torch.load(path, map_location=torch.device("cpu")))
     self.model.eval()  # evaluation (inference) mode
     self.model.to(device=self.device)
 
     self.target_return = torch.tensor(
-        9 / self.scale, device=self.device, dtype=torch.float32
+        30 / self.scale, device=self.device, dtype=torch.float32
     ).reshape(
         1, 1
     )  # NOTE: set the target return here
@@ -93,7 +93,7 @@ def setup(self):
 def act(self, game_state: dict) -> str:
     """Takes in the current game state and returns the chosen action in form of a string."""
     if game_state["round"] != self.current_round:
-        self.timestep = 1
+        self.timestep = 0
         self.current_round = game_state["round"]
 
     # get the reward from the previous action
