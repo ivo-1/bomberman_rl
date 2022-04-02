@@ -93,10 +93,13 @@ DROPPED_UNNECESSARY_BOMB = (
 )
 
 BLOCKED = "BLOCKED"
+NOT_BLOCKED = "NOT_BLOCKED"
 
 SAFE_WAY = "SAFE_WAY"
 
 NO_CRATE_DESTROYED = "NO_CRATE_DESTROYED"
+
+TARGETED_ENEMY = "TARGETED_ENEMY"
 
 
 def setup_training(self):
@@ -112,6 +115,177 @@ def setup_training(self):
 
 
 def game_events_occurred(self, old_game_state, self_action: str, new_game_state, events):
+    old_state = self.old_state
+    self.new_state = state_to_features(self, new_game_state)
+    new_state = self.new_state
+
+    old_feature_dict = self.state_list[old_state]
+
+    tiles_2_action = {0: "DOWN", 1: "UP", 2: "RIGHT", 3: "LEFT"}
+    action_2_tiles = {"DOWN": 0, "UP": 1, "RIGHT": 2, "LEFT": 3}
+
+    # --- Custom events ---
+
+    # - Coin Feature -
+    # we only want to reward when it's safe to go after coins, i.e. not in bomb or enemy zone
+    reward_coin_feature = True
+    if old_feature_dict["game_mode"] == 0:
+        reward_coin_feature = True
+    if old_feature_dict["current_field"] == 0 or old_feature_dict["current_field"] == 4:
+        reward_coin_feature = False
+    # sometimes coin_direction is random and can, e.g., be an explosion (which is 'BLOCKED')
+    # if old_feature_dict["coin_direction"] == "UP" and old_feature_dict["up"] == "BLOCKED":
+    #     reward_coin_feature = False
+    # if old_feature_dict["coin_direction"] == "DOWN" and old_feature_dict["down"] == "BLOCKED":
+    #     reward_coin_feature = False
+    # if old_feature_dict["coin_direction"] == "RIGHT" and old_feature_dict["right"] == "BLOCKED":
+    #     reward_coin_feature = False
+    # if old_feature_dict["coin_direction"] == "LEFT" and old_feature_dict["left"] == "BLOCKED":
+    #     reward_coin_feature = False
+
+    if reward_coin_feature is True:
+        if old_feature_dict["neighbours_up"] == 1 and "UP" == self_action:
+            events.append(FOLLOWED_COIN_DIRECTION)
+        elif old_feature_dict["neighbours_down"] == 1 and "DOWN" == self_action:
+            events.append(FOLLOWED_COIN_DIRECTION)
+        elif old_feature_dict["neighbours_right"] == 1 and "RIGHT" == self_action:
+            events.append(FOLLOWED_COIN_DIRECTION)
+        elif old_feature_dict["neighbours_left"] == 1 and "LEFT" == self_action:
+            events.append(FOLLOWED_COIN_DIRECTION)
+        else:
+            events.append(NOT_FOLLOWED_COIN_DIRECTION)
+
+    # - Bomb Safety Feature -
+    # when we are't in bomb zone, neither reward nor penalty should be given for this
+    # again, direction can sometimes be random and lead to a BLOCKED tile
+    if (
+        old_feature_dict["current_field"] == 0
+        or old_feature_dict["current_field"] == 4
+        or old_feature_dict["game_mode"] == 1
+    ):
+        reward_bomb_safety_feature = True
+        # if (
+        #     old_feature_dict["bomb_safety_direction"] == "UP"
+        #     and old_feature_dict["up"] == "BLOCKED"
+        # ):
+        #     reward_bomb_safety_feature = False
+        # if (
+        #     old_feature_dict["bomb_safety_direction"] == "DOWN"
+        #     and old_feature_dict["down"] == "BLOCKED"
+        # ):
+        #     reward_bomb_safety_feature = False
+        # if (
+        #     old_feature_dict["bomb_safety_direction"] == "RIGHT"
+        #     and old_feature_dict["right"] == "BLOCKED"
+        # ):
+        #     reward_bomb_safety_feature = False
+        # if (
+        #     old_feature_dict["bomb_safety_direction"] == "LEFT"
+        #     and old_feature_dict["left"] == "BLOCKED"
+        # ):
+        #     reward_bomb_safety_feature = False
+        if reward_bomb_safety_feature is True:
+            if old_feature_dict["neighbours_up"] == 1 and "UP" == self_action:
+                events.append(FOLLOWED_BOMB_DIRECTION)
+            elif old_feature_dict["neighbours_down"] == 1 and "DOWN" == self_action:
+                events.append(FOLLOWED_BOMB_DIRECTION)
+            elif old_feature_dict["neighbours_right"] == 1 and "RIGHT" == self_action:
+                events.append(FOLLOWED_BOMB_DIRECTION)
+            elif old_feature_dict["neighbours_left"] == 1 and "LEFT" == self_action:
+                events.append(FOLLOWED_BOMB_DIRECTION)
+            else:
+                events.append(NOT_FOLLOWED_BOMB_DIRECTION)
+
+    # - Safe To Bomb Feature -
+    # 5 cases:
+    # * it was unsafe to drop bomb, but a bomb was dropped -> DROPPED_BAD_BOMB
+    # * it was safe to drop bomb, but there were no crates or enemies -> DROPPED_UNNCESSARY_BOMB
+    # * it was safe to drop bomb and there was an enemy -> TARGETED_ENEMY
+    # * it was safe to drop bomb and there were some or many crates -> TARGETED_SOME_CRATES/TARGETED_MANY_CRATES
+    # crate and enemy targeting is not mutually exclusive, some and many crates is
+    if (
+        old_feature_dict["current_field"] == 0 or old_feature_dict["current_field"] == 4
+    ) and self_action == "BOMB":
+        events.append(DROPPED_BAD_BOMB)
+
+    if 0 < old_feature_dict["current_field"] < 4:
+        if self_action == "BOMB":
+            if old_feature_dict["current_field"] > 1:
+                events.append(TARGETED_MANY_CRATES)
+            elif old_feature_dict["current_field"] == 1:
+                events.append(TARGETED_SOME_CRATES)
+            # if old_feature_dict["in_enemy_zone"] == 1:
+            #     events.append(TARGETED_ENEMY)
+            # if (
+            #     old_feature_dict["in_enemy_zone"] == 0
+            #     and old_feature_dict["crate_priority"] == "ZERO"
+            # ):
+            #     events.append(DROPPED_UNNECESSARY_BOMB)
+
+    # - Blockage Feature -
+    # unlike other events, is always excuted independent of other features
+
+    if self_action == "UP":
+        if old_feature_dict["neighbours_up"] == 2:
+            events.append(BLOCKED)
+        else:
+            events.append(NOT_BLOCKED)
+    if self_action == "DOWN":
+        if old_feature_dict["neighbours_down"] == 2:
+            events.append(BLOCKED)
+        else:
+            events.append(NOT_BLOCKED)
+    if self_action == "RIGHT":
+        if old_feature_dict["neighbours_right"] == 2:
+            events.append(BLOCKED)
+        else:
+            events.append(NOT_BLOCKED)
+    if self_action == "LEFT":
+        if old_feature_dict["neighbours_left"] == 2:
+            events.append(BLOCKED)
+        else:
+            events.append(NOT_BLOCKED)
+
+    self.logger.debug(f'Old coords: {old_game_state["self"][3]}')
+    self.logger.debug(f'New coords: {new_game_state["self"][3]}')
+    self.logger.debug(f"Action: {self_action}")
+
+    # collect reward
+    reward = reward_from_events(self, events)
+
+    # state_to_features is defined in callbacks.py
+    self.transitions.append(
+        Transition(
+            old_state,
+            self_action,
+            new_state,
+            reward,
+        )
+    )
+
+    action_idx = ACTIONS.index(self_action)
+    self.logger.debug(f"Action index chosen: {action_idx}")
+
+    self.rewards_of_episode += reward
+    self.logger.debug(f"Old Q-Table old state: {self.q_table[old_state]}")
+
+    self.q_table[old_state, action_idx] = self.q_table[
+        old_state, action_idx
+    ] + self.learning_rate * (
+        reward
+        + self.discount_rate * np.max(self.q_table[new_state])
+        - self.q_table[old_state, action_idx]
+    )
+    self.logger.debug(f"New Q-Table old state: {self.q_table[old_state]}")
+
+    self.logger.info(
+        f'Encountered game event(s) {", ".join(map(repr, events))} in step {new_game_state["step"]}\n\
+        ==============================================================================================\
+        =============================================================================================='
+    )
+
+
+def game_events_occurred_old(self, old_game_state, self_action: str, new_game_state, events):
     """Called once after each time step (after act()) except the last. Used to collect training
     data and filling the experience buffer.
 
@@ -283,51 +457,81 @@ def reward_from_events(self, events: List[str]) -> int:
     Returns a summed up reward/penalty for a given list of events that happened.
     """
 
+    # game_rewards = {
+    #     e.BOMB_DROPPED: 5,  # adjust aggressiveness
+    #     # # e.BOMB_EXPLODED: 0,
+    #     e.COIN_COLLECTED: 5,
+    #     # # e.COIN_FOUND: 5,  # direct consequence from crate destroyed, redundant reward?
+    #     e.WAITED: 0,  # adjust passivity
+    #     e.CRATE_DESTROYED: 7,
+    #     e.GOT_KILLED: 0,  # adjust passivity
+    #     e.KILLED_OPPONENT: 0,
+    #     e.KILLED_SELF: 0,  # you dummy --- this *also* triggers GOT_KILLED
+    #     # e.OPPONENT_ELIMINATED: 0.05,  # good because less danger or bad because other agent scored points?
+    #     # # e.SURVIVED_ROUND: 0,  # could possibly lead to not being active - actually penalize if agent too passive?
+    #     # # necessary? (maybe for penalizing trying to move through walls/crates) - yes, seems to be necessary to
+    #     # # learn that one cannot place a bomb after another placed bomb is still not exploded
+    #     e.INVALID_ACTION: -10,
+    #     # WAS_BLOCKED: -20,
+    #     # MOVED: -0.1,
+    #     # PROGRESSED: 10,  # higher?
+    #     # STAGNATED: -3,  # higher? lower?
+    #     # FLED: 15,
+    #     # SUICIDAL: -15,
+    #     # AGRESSIVE: 8,
+    #     # SCARED: -9,
+    #     # ESCAPED_DANGER: 50,
+    #     # FOLLOWED_DANGER: -75,
+    #     # DECREASED_DISTANCE: 8,
+    #     # INCREASED_DISTANCE: -8.1,  # higher? lower? idk
+    #     # INCREASED_SURROUNDING_CRATES: 1.5,
+    #     # DECREASED_SURROUNDING_CRATES: -1.6,
+    #     # INCREASED_BOMB_DISTANCE: 5,
+    #     # DECREASED_BOMB_DISTANCE: -5.1,
+    #     # FOLLOWED_DIRECTION: 5,  # possibly create penalty
+    #     # NOT_FOLLOWED_DIRECTION: -6,
+    #     FOLLOWED_PATH: 13,
+    #     NOT_FOLLOWED_PATH: -20,
+    #     # FOLLOWED_BOMB_DIRECTION: 25,
+    #     # NOT_FOLLOWED_BOMB_DIRECTION: -50,
+    #     # DROPPED_BAD_BOMB: -100,
+    #     # DROPPED_UNNECESSARY_BOMB: -100,
+    #     # TARGETED_ENEMY: 30,
+    #     # BLOCKED: -100,
+    #     # SAFE_WAY: -0.001,
+    #     TARGETED_MANY_CRATES: 15,
+    #     TARGETED_SOME_CRATES: 7.5,
+    #     # NO_CRATE_DESTROYED: -10,
+    # }
+
     game_rewards = {
-        e.BOMB_DROPPED: 5,  # adjust aggressiveness
-        # # e.BOMB_EXPLODED: 0,
+        e.BOMB_DROPPED: 0,
+        e.BOMB_EXPLODED: 0,
         e.COIN_COLLECTED: 0,
-        # # e.COIN_FOUND: 5,  # direct consequence from crate destroyed, redundant reward?
-        e.WAITED: 0,  # adjust passivity
-        e.CRATE_DESTROYED: 7,
-        e.GOT_KILLED: 0,  # adjust passivity
+        e.COIN_FOUND: 0,
+        e.WAITED: 0,
+        e.CRATE_DESTROYED: 0,
+        e.GOT_KILLED: 0,
         e.KILLED_OPPONENT: 0,
-        e.KILLED_SELF: 0,  # you dummy --- this *also* triggers GOT_KILLED
-        # e.OPPONENT_ELIMINATED: 0.05,  # good because less danger or bad because other agent scored points?
-        # # e.SURVIVED_ROUND: 0,  # could possibly lead to not being active - actually penalize if agent too passive?
-        # # necessary? (maybe for penalizing trying to move through walls/crates) - yes, seems to be necessary to
-        # # learn that one cannot place a bomb after another placed bomb is still not exploded
-        e.INVALID_ACTION: -10,
-        # WAS_BLOCKED: -20,
-        # MOVED: -0.1,
-        # PROGRESSED: 10,  # higher?
-        # STAGNATED: -3,  # higher? lower?
-        # FLED: 15,
-        # SUICIDAL: -15,
-        # AGRESSIVE: 8,
-        # SCARED: -9,
-        # ESCAPED_DANGER: 50,
-        # FOLLOWED_DANGER: -75,
-        # DECREASED_DISTANCE: 8,
-        # INCREASED_DISTANCE: -8.1,  # higher? lower? idk
-        # INCREASED_SURROUNDING_CRATES: 1.5,
-        # DECREASED_SURROUNDING_CRATES: -1.6,
-        # INCREASED_BOMB_DISTANCE: 5,
-        # DECREASED_BOMB_DISTANCE: -5.1,
-        # FOLLOWED_DIRECTION: 5,  # possibly create penalty
-        # NOT_FOLLOWED_DIRECTION: -6,
-        FOLLOWED_PATH: 13,
-        NOT_FOLLOWED_PATH: -20,
-        # FOLLOWED_BOMB_DIRECTION: 25,
-        # NOT_FOLLOWED_BOMB_DIRECTION: -50,
-        # DROPPED_BAD_BOMB: -100,
-        # DROPPED_UNNECESSARY_BOMB: -100,
-        # TARGETED_ENEMY: 30,
-        # BLOCKED: -100,
-        # SAFE_WAY: -0.001,
-        # TARGETED_MANY_CRATES: 15,
-        # TARGETED_SOME_CRATES: 7.5,
-        # NO_CRATE_DESTROYED: -10,
+        e.KILLED_SELF: 0,  # this also triggers GOT_KILLED
+        e.OPPONENT_ELIMINATED: 0,
+        e.SURVIVED_ROUND: 0,
+        e.INVALID_ACTION: 0,
+        FOLLOWED_COIN_DIRECTION: 75,
+        NOT_FOLLOWED_COIN_DIRECTION: -100,
+        FOLLOWED_BOMB_DIRECTION: 50,
+        NOT_FOLLOWED_BOMB_DIRECTION: -100,
+        DROPPED_BAD_BOMB: -100,
+        DROPPED_UNNECESSARY_BOMB: -75,
+        TARGETED_MANY_CRATES: 50,
+        TARGETED_SOME_CRATES: 10,
+        TARGETED_ENEMY: 100,
+        BLOCKED: -100,
+        NOT_BLOCKED: 0,
+        e.MOVED_DOWN: 0,
+        e.MOVED_LEFT: 0,
+        e.MOVED_RIGHT: 0,
+        e.MOVED_UP: 0,
     }
 
     reward_sum = 0
