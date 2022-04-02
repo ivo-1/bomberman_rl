@@ -104,7 +104,7 @@ class DecisionTransformer(nn.Module):
             torch.stack(
                 (returns_embeddings, state_embeddings, action_embeddings), dim=1
             )  # (B, 3, K, hidden_size) where 3 consists of return, state, action
-            # .permute(0, 2, 1, 3) # (B, K, 3, hidden_size)
+            .permute(0, 2, 1, 3)  # (B, K, 3, hidden_size)
             .reshape(
                 batch_size, -1, self.hidden_size  # (B, 3*K, hidden_size)
             )  # NOTE: 3*seq_length because one step consists of 3 tokens returns, state and action
@@ -114,7 +114,7 @@ class DecisionTransformer(nn.Module):
         # to make the attention mask fit the stacked inputs, have to stack it as well
         stacked_attention_mask = (
             torch.stack((attention_mask, attention_mask, attention_mask), dim=1)
-            # .permute(0, 2, 1)
+            .permute(0, 2, 1)
             .reshape(batch_size, -1)
         )
         # print(stacked_attention_mask.shape)
