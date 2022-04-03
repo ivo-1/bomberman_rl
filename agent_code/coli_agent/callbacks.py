@@ -852,7 +852,4 @@ def state_to_features(self, game_state: dict) -> int:
         if state == state_dict:
             return i
 
-    self.logger.debug(f"State list: {self.state_list}")
-    raise ReferenceError(
-        "State dict created by state_to_features was not found in self.state_list."
-    )
+    raise ReferenceError("State dict created by state_to_features was not found in self.state_list")
