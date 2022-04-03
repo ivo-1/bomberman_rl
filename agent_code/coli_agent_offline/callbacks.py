@@ -58,7 +58,10 @@ def setup(self):
         state_dim=self.state_dim,  # how many entries the feature vector has
         action_dim=self.action_dim,  # how many actions one can take
         max_length=self.context_window,  # context window
-        max_ep_len=400,  # game of bomberman lasts max. 400 steps (starts at 0 and ends *after* 400 inputs)
+        # NOTE: you need to change this depending on which saved model you load
+        # because some models were trained with max_ep_len 401
+        # and some with max_ep_len=400
+        max_ep_len=401,  # game of bomberman lasts max. 400 steps (starts at 0 and ends *after* 400 inputs)
         hidden_size=self.hidden_size,  # size of timestep, return, state, action embeddings
         n_layer=3,  # GPT2
         n_head=1,  # GPT2
@@ -69,14 +72,15 @@ def setup(self):
         attn_pdrop=self.dropout,  # GPT2
     )
 
-    path = "/Users/ivo/Studium/fml/bomberman_rl/agent_code/coli_agent_offline/decision_transformer/checkpoints/2022-04-02T19:23:19/iter_05.pt"
+    # path to saved model which has been trained for 10x10k sequences with 10k warmup steps and uses normalized states
+    path = "decision_transformer/checkpoints/2022-03-30T13:08:03/iter_10.pt"
 
     self.model.load_state_dict(torch.load(path, map_location=torch.device("cpu")))
     self.model.eval()  # evaluation (inference) mode
     self.model.to(device=self.device)
 
     self.target_return = torch.tensor(
-        15 / self.scale, device=self.device, dtype=torch.float32
+        10 / self.scale, device=self.device, dtype=torch.float32
     ).reshape(
         1, 1
     )  # NOTE: set the target return here
