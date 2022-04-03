@@ -272,12 +272,12 @@ def reward_from_events(self, events: List[str]) -> int:
     """
 
     game_rewards = {
-        e.BOMB_DROPPED: 10,  # adjust aggressiveness
+        e.BOMB_DROPPED: 5,  # adjust aggressiveness
         # e.BOMB_EXPLODED: 0,
         e.COIN_COLLECTED: 50,
         # e.COIN_FOUND: 5,  # direct consequence from crate destroyed, redundant reward?
         e.WAITED: -3,  # adjust passivity
-        e.CRATE_DESTROYED: 4,
+        e.CRATE_DESTROYED: 10,
         e.GOT_KILLED: -50,  # adjust passivity
         e.KILLED_OPPONENT: 200,
         e.KILLED_SELF: -10,  # you dummy --- this *also* triggers GOT_KILLED
