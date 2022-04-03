@@ -76,7 +76,7 @@ def setup(self):
     self.model.to(device=self.device)
 
     self.target_return = torch.tensor(
-        30 / self.scale, device=self.device, dtype=torch.float32
+        15 / self.scale, device=self.device, dtype=torch.float32
     ).reshape(
         1, 1
     )  # NOTE: set the target return here
@@ -102,9 +102,11 @@ def act(self, game_state: dict) -> str:
 
     current_return_to_go = self.target_return[0, -1] - (previous_reward / self.scale)
 
+    # add it to the rtg list up until the current timestep
     self.target_return = torch.cat([self.target_return, current_return_to_go.reshape(1, 1)])
 
-    # and add it to previous seen rewards and overwrite the padding "fake" reward
+    # finally add it to previous seen rewards and overwrite the padding "fake" reward with the actually
+    # received "previous_reward"
     self.rewards = torch.cat(
         [self.rewards[:-1], torch.tensor(previous_reward, device=self.device).unsqueeze(0)]
     )
@@ -113,7 +115,7 @@ def act(self, game_state: dict) -> str:
     # this point there are no actions (and hence no rewards) because that's the whole
     # point of what should be predicted.
     #
-    # We can't just pass in the current state to it. Instead we pass in the current state
+    # We can't just pass in the current state to the model. Instead we pass in the current state
     # *and* "fake" actions and rewards that are just zeros
     self.actions = torch.cat(
         [self.actions, torch.zeros((1, self.action_dim), device=self.device)], dim=0
@@ -128,7 +130,7 @@ def act(self, game_state: dict) -> str:
         .reshape(1, self.state_dim)
     )
 
-    # concatenate it with all previous seen states
+    # concatenate it with all previously seen states
     self.states = torch.cat([self.states, state], dim=0)
 
     self.logger.debug("Querying model for action...")

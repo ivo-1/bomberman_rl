@@ -271,7 +271,7 @@ def state_to_features(self, game_state) -> np.array:
         7: agent that can place a bomb
         8: agent that can't place a bomb
         9: agent that's standing on a bomb (i.e. his own bomb)
-        10: bomb (without agent standing on it)
+        10: bomb (without agent standing on it) unless we are standing on our own bomb
     """
     feature_vector = np.zeros(
         self.board_size ** 2, dtype=int
