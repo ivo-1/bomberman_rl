@@ -72,15 +72,21 @@ def setup(self):
         attn_pdrop=self.dropout,  # GPT2
     )
 
-    # path to saved model which has been trained for 10x10k sequences with 10k warmup steps and uses normalized states
-    path = "decision_transformer/checkpoints/2022-03-30T13:08:03/iter_10.pt"
+    # path to saved model which has been trained for 20x10k sequences with 10k warmup steps and uses no normalization
+    path = "decision_transformer/checkpoints/2022-03-27T14:15:36/iter_20.pt"
+
+    # path to saved model which has been trained for 10x10k sequences with 10k warmup steps and uses first normalization
+    # path = "decision_transformer/checkpoints/2022-03-29T22:30:41/iter_10.pt"
+
+    # path to saved model which has been trained for 10x10k sequences with 10k warmup steps and uses second normalization
+    # path = "decision_transformer/checkpoints/2022-03-30T13:08:03/iter_10.pt"
 
     self.model.load_state_dict(torch.load(path, map_location=torch.device("cpu")))
     self.model.eval()  # evaluation (inference) mode
     self.model.to(device=self.device)
 
     self.target_return = torch.tensor(
-        10 / self.scale, device=self.device, dtype=torch.float32
+        16 / self.scale, device=self.device, dtype=torch.float32
     ).reshape(
         1, 1
     )  # NOTE: set the target return here
